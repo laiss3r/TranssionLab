@@ -1,0 +1,155 @@
+name: TranssionLab CI, Static Analysis & Single Windows Installer Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  SOLUTION_FILE: TranssionLab.sln
+  APP_PROJECT: src/TranssionLab.App/TranssionLab.App.csproj
+
+jobs:
+  build-test-analyze:
+    name: Restore, Build, Static Analysis & Unit Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout clean repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
+
+      - name: Compile & run Roslyn static analyzers (Warnings as Errors)
+        run: dotnet build ${{ env.SOLUTION_FILE }} --configuration Release --no-restore -warnaserror
+
+      - name: Verify Windows ARM64 compilation target
+        run: dotnet build ${{ env.APP_PROJECT }} --configuration Release -r win-arm64 -warnaserror
+
+      - name: Run full automated test suite (51 tests)
+        run: dotnet test ${{ env.SOLUTION_FILE }} --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+  package-windows:
+    name: Build & Smoke-Test Single Windows Setup Executable (win-x64)
+    needs: build-test-analyze
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Determine release version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -like "refs/tags/v*") {
+            $v = "${{ github.ref_name }}".TrimStart('v')
+          } else {
+            $v = "1.7.0"
+          }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Publish multi-file self-contained Windows runtime & bundle Platform-Tools
+        shell: pwsh
+        run: |
+          $bundleDir = "dist/win-x64"
+          dotnet publish ${{ env.APP_PROJECT }} `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:Version=${{ steps.ver.outputs.version }} `
+            -p:PublishSingleFile=false `
+            -p:DebugType=none `
+            -p:DebugSymbols=false `
+            --output $bundleDir
+
+          New-Item -ItemType Directory -Force -Path "$bundleDir/profiles", "$bundleDir/docs", "$bundleDir/tools" | Out-Null
+          Copy-Item "profiles/*.json" "$bundleDir/profiles/" -ErrorAction SilentlyContinue
+          Copy-Item "docs/*.md" "$bundleDir/docs/"
+          Copy-Item "README.md" "$bundleDir/"
+
+          $ptZip = Join-Path $env:RUNNER_TEMP "platform-tools-latest-windows.zip"
+          Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $ptZip -UseBasicParsing
+          Expand-Archive -Path $ptZip -DestinationPath $bundleDir -Force
+
+      - name: Build Single NSIS Standalone First-Time Setup Executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "releases" | Out-Null
+          $ver = "${{ steps.ver.outputs.version }}"
+          $setupName = "TranssionLab-Setup-v$ver-win-x64.exe"
+          $setupPath = (Join-Path (Resolve-Path "releases").Path $setupName)
+          $bundleAbs = (Resolve-Path "dist/win-x64").Path
+          $iconAbs = (Resolve-Path "src/TranssionLab.App/Assets/TranssionLab.ico").Path
+
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            "/V2" `
+            "/DAPP_VERSION=$ver" `
+            "/DAPP_ARCH=win-x64" `
+            "/DBUNDLE_DIR=$bundleAbs" `
+            "/DOUT_EXE=$setupPath" `
+            "/DICON_FILE=$iconAbs" `
+            "installer/TranssionLabSetup.nsi"
+
+          Write-Host "Built standalone installer: $setupPath"
+
+      - name: Smoke-test Setup Installer & 19-Page WPF Rendering on Windows
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $setupPath = (Resolve-Path "releases/TranssionLab-Setup-v$ver-win-x64.exe").Path
+          $installTarget = Join-Path $env:RUNNER_TEMP "TranssionLabInstalledTest"
+          Start-Process -FilePath $setupPath -ArgumentList "/S", "/D=$installTarget" -Wait -NoNewWindow
+
+          $installedExe = Join-Path $installTarget "TranssionLab.exe"
+          if (-not (Test-Path $installedExe)) {
+            throw "Installer failed to unpack TranssionLab.exe to $installedExe"
+          }
+
+          $out = & $installedExe --self-test
+          Write-Host "WPF Self-Test Output: $out"
+          if ($LASTEXITCODE -ne 0 -or ($out -notmatch "SELF_TEST_OK:19_PAGES_VERIFIED")) {
+            throw "WPF Self-Test failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload Single Windows Setup Installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TranssionLab-Setup-win-x64
+          path: releases/TranssionLab-Setup-v*-win-x64.exe
+
+  github-release:
+    name: Publish Single-EXE GitHub Release
+    needs: package-windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Single Windows Setup Executable
+        uses: actions/download-artifact@v4
+        with:
+          name: TranssionLab-Setup-win-x64
+          path: release_assets
+
+      - name: Create or Update GitHub Release (Single EXE Only)
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release_assets/TranssionLab-Setup-v*-win-x64.exe
