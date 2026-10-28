@@ -318,7 +318,7 @@ public sealed class DocumentationAboutViewModel : PageViewModelBase
             "1. Architecture & Honest Capability Policy",
             "Overview",
             """
-            TRANSSIONLAB UNIVERSAL ANDROID SERVICING SUITE (v1.8.0)
+            TRANSSIONLAB UNIVERSAL ANDROID SERVICING SUITE (v1.9.0)
             Target OS: Windows 10 & Windows 11 (x64, ARM64-ready) | Offline-First
 
             Core Engineering Principles:

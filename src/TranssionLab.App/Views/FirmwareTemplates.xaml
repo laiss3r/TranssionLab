@@ -78,34 +78,38 @@
     </StackPanel>
   </DataTemplate>
 
-  <!-- PAGE 12: ROM STUDIO (Section 6 + payload.bin & Sparse Conversion) -->
+  <!-- PAGE 12: TRANSSION ROM STUDIO (Section 6 + payload.bin, Sparse Conversion & Active Slot Control) -->
   <DataTemplate DataType="{x:Type pages:RomStudioViewModel}">
     <StackPanel>
-      <Border Style="{StaticResource FluentCardStyle}">
+      <Border Style="{StaticResource FluentCardStyle}" BorderBrush="#FF6F00">
         <StackPanel>
-          <TextBlock Text="1. Stock Firmware Partition Extractor (OTA ZIP / payload.bin / TAR / Unisoc PAC / Scatter)" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
-          <TextBlock Text="Extracts unprotected stock partition images (e.g. boot, init_boot, vbmeta, vendor_boot, system) directly from payload.bin, OTA ZIP, TAR/TGZ, PAC, or Scatter folders with SHA-256 verification. Protected NVRAM/FRP partitions are blocked."
-                     Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10" />
+          <TextBlock Text="🔧 TRANSSION ROM STUDIO" Foreground="#FF6F00" FontWeight="Bold" FontSize="15" Margin="0,0,0,3" />
+          <TextBlock Text="Stock firmware container extractor, Android Sparse-to-Raw converter, Fastboot active slot switcher, and AOSP/GSI source build validator for TECNO / Infinix / itel distributions."
+                     Foreground="{StaticResource SecondaryTextBrush}" FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,12" />
 
-          <Grid Margin="0,0,0,8">
+          <TextBlock Text="Firmware Container (rom — .zip / OTA payload.bin / super.img / .pac / scatter)" Style="{StaticResource FieldLabelStyle}" />
+          <Grid Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox Grid.Column="0" Text="{Binding StockArchivePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
-            <Button Grid.Column="1" Content="Select Stock Container..." Command="{Binding BrowseStockArchiveCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+            <Button Grid.Column="1" Content="📁 Choose Firmware" Command="{Binding BrowseStockArchiveCommand}" Style="{StaticResource PurpleButtonStyle}" />
           </Grid>
 
+          <TextBlock Text="Destination Directory (out) &amp; Target Partition Entry" Style="{StaticResource FieldLabelStyle}" />
           <Grid Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="220" />
-              <ColumnDefinition Width="12" />
+              <ColumnDefinition Width="190" />
+              <ColumnDefinition Width="10" />
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding EntryToExtract, UpdateSourceTrigger=PropertyChanged}" ToolTip="Partition or Entry (e.g. boot, init_boot, boot.img, BOOT)" />
+            <TextBox Grid.Column="0" Text="{Binding EntryToExtract, UpdateSourceTrigger=PropertyChanged}" ToolTip="Partition or Entry (e.g. boot, init_boot, vbmeta, product_a)" />
             <TextBox Grid.Column="2" Text="{Binding StagingOutputDirectory, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
-            <Button Grid.Column="3" Content="Extract Partition Image" Command="{Binding ExtractEntryCommand}" Style="{StaticResource PrimaryButtonStyle}" />
+            <Button Grid.Column="3" Content="📁 Choose Destination" Command="{Binding BrowseOutputDirectoryCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" />
+            <Button Grid.Column="4" Content="⚡ Extract Verified Image" Command="{Binding ExtractEntryCommand}" Style="{StaticResource EmeraldButtonStyle}" />
           </Grid>
 
           <TextBlock Text="Android Sparse Image (0xED26FF3A) → Raw Image Converter" Style="{StaticResource FieldLabelStyle}" />
@@ -116,10 +120,24 @@
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox Grid.Column="0" Text="{Binding SparseInputPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
-            <Button Grid.Column="1" Content="Select Sparse .img..." Command="{Binding BrowseSparseInputCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" />
-            <Button Grid.Column="2" Content="Convert Sparse → Raw .img" Command="{Binding UnsparseImageCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+            <Button Grid.Column="1" Content="📁 Choose Sparse .img" Command="{Binding BrowseSparseInputCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="Convert Sparse → Raw .img" Command="{Binding UnsparseImageCommand}" Style="{StaticResource PrimaryButtonStyle}" />
           </Grid>
         </StackPanel>
+      </Border>
+
+      <!-- DEVICE ACTIVE SLOT CARD -->
+      <Border Style="{StaticResource FluentCardStyle}" BorderBrush="#0EA5E9">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Content="Set Slot A" Command="{Binding SetSlotACommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0" />
+            <Button Content="Set Slot B" Command="{Binding SetSlotBCommand}" Style="{StaticResource PurpleButtonStyle}" />
+          </StackPanel>
+          <StackPanel VerticalAlignment="Center" Margin="0,0,14,0">
+            <TextBlock Text="⚙️ DEVICE ACTIVE SLOT (Fastboot / Fastbootd)" Foreground="#38BDF8" FontWeight="Bold" FontSize="13.5" Margin="0,0,0,3" />
+            <TextBlock Text="{Binding ActiveSlotStatusText}" Foreground="#86EFAC" FontSize="11.5" TextWrapping="Wrap" />
+          </StackPanel>
+        </DockPanel>
       </Border>
 
       <Border Style="{StaticResource FluentCardStyle}">
@@ -350,18 +368,22 @@
             <Button Grid.Column="6" Content="Clear" Command="{Binding ClearQueueCommand}" Style="{StaticResource SecondaryButtonStyle}" />
           </Grid>
 
-          <DataGrid ItemsSource="{Binding FlashQueue}" SelectedItem="{Binding SelectedQueueRow}" MaxHeight="135" Margin="0,0,0,10">
+          <WrapPanel Margin="0,0,0,8">
+            <Button Content="✓ All" Command="{Binding SelectAllQueueCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" />
+            <Button Content="✗ None" Command="{Binding UnselectAllQueueCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" />
+            <Button Content="📁 Imports (Folder)" Command="{Binding ImportFirmwareFolderCommand}" Style="{StaticResource PurpleButtonStyle}" Margin="0,0,12,0" />
+            <Button Content="Build &amp; Validate Plan" Command="{Binding BuildPlanCommand}" Style="{StaticResource AmberButtonStyle}" Margin="0,0,8,0" />
+            <Button Content="Dry-Run Verification" Command="{Binding RunDryRunCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0" />
+            <Button Content="🛑 Safe Cancel" Command="{Binding CancelBetweenPartitionsCommand}" Style="{StaticResource DangerButtonStyle}" />
+          </WrapPanel>
+
+          <DataGrid ItemsSource="{Binding FlashQueue}" SelectedItem="{Binding SelectedQueueRow}" IsReadOnly="False" MaxHeight="165" Margin="0,0,0,8">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Target Partition" Binding="{Binding PartitionName}" Width="180" />
-              <DataGridTextColumn Header="Local Image Path" Binding="{Binding ImageFilePath}" Width="*" />
+              <DataGridCheckBoxColumn Header="✓" Binding="{Binding IsEnabled, UpdateSourceTrigger=PropertyChanged}" Width="44" />
+              <DataGridTextColumn Header="Target Partition" Binding="{Binding PartitionName}" IsReadOnly="True" Width="175" />
+              <DataGridTextColumn Header="Local Image Path" Binding="{Binding ImageFilePath}" IsReadOnly="True" Width="*" />
             </DataGrid.Columns>
           </DataGrid>
-
-          <WrapPanel>
-            <Button Content="Step 1–6: Build &amp; Validate Execution Plan" Command="{Binding BuildPlanCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,10,0" />
-            <Button Content="Step 7: Run Dry-Run Pre-Flight Check" Command="{Binding RunDryRunCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
-            <Button Content="Safe Cancel (Between Partitions)" Command="{Binding CancelBetweenPartitionsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-          </WrapPanel>
         </StackPanel>
       </Border>
 

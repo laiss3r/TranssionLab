@@ -225,14 +225,42 @@ public sealed class VcomCatchAndQuickReadTests : IDisposable
         using var sp = services.BuildServiceProvider();
         var shell = sp.GetRequiredService<MainShellViewModel>();
 
-        Assert.Equal(7, shell.PrimaryNavItems.Count);
+        Assert.Equal(11, shell.PrimaryNavItems.Count);
         Assert.Equal(19, shell.Pages.Count);
+        Assert.Contains("LIFETIME UNLIMITED", shell.UnlimitedStatusBadge);
 
-        // Selecting Firmware & Flash group exposes Partitions, Unpack Firmware, Safe Flasher, ROM Studio sub-tabs
-        shell.SelectedPrimaryNav = shell.PrimaryNavItems[5];
+        // Selecting Module 10 (Transsion Rom Studio) exposes RomStudio + FirmwareExplorer sub-tabs
+        shell.SelectedPrimaryNav = shell.PrimaryNavItems[9];
         Assert.True(shell.HasMultipleSubTabs);
-        Assert.Equal(4, shell.ActiveSubTabs.Count);
-        Assert.Equal(13, shell.CurrentPage.PageNumber);
+        Assert.Equal(2, shell.ActiveSubTabs.Count);
+        Assert.Equal(12, shell.CurrentPage.PageNumber);
+
+        // Settings gear wheel opens Settings (#18) + USB/Profiles/Logs sub-tabs
+        shell.OpenSettingsWheelCommand.Execute(null);
+        Assert.Equal(18, shell.CurrentPage.PageNumber);
+        Assert.Equal(6, shell.ActiveSubTabs.Count);
+
+        // Emergency STOP resets badge cleanly
+        shell.EmergencyStopCommand.Execute(null);
+        Assert.Equal("STOPPED", shell.StepBadgeText);
+
+        // Fastboot OGT Flasher folder import skips protected NVRAM/FRP/userdata images automatically
+        var importDir = Path.Combine(_tempDir, "fw_folder");
+        Directory.CreateDirectory(importDir);
+        File.WriteAllBytes(Path.Combine(importDir, "boot_a.img"), [1, 2, 3, 4]);
+        File.WriteAllBytes(Path.Combine(importDir, "vendor_boot_a.img"), [5, 6, 7, 8]);
+        File.WriteAllBytes(Path.Combine(importDir, "proinfo.img"), [9, 9]);
+        File.WriteAllBytes(Path.Combine(importDir, "nvram.img"), [9, 9]);
+        File.WriteAllBytes(Path.Combine(importDir, "userdata.img"), [9, 9]);
+
+        var flashVm = sp.GetRequiredService<TranssionLab.ViewModels.Pages.FlashManagerViewModel>();
+        int imported = flashVm.ImportUnprotectedImagesFromDirectory(importDir);
+        Assert.Equal(2, imported);
+        Assert.Equal(2, flashVm.FlashQueue.Count);
+        flashVm.UnselectAllQueueCommand.Execute(null);
+        Assert.False(flashVm.BuildPlanCommand.CanExecute(null));
+        flashVm.SelectAllQueueCommand.Execute(null);
+        Assert.True(flashVm.BuildPlanCommand.CanExecute(null));
     }
 
     [Fact]

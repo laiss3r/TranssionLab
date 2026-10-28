@@ -20,7 +20,7 @@ internal static class SetupEngine
     public const string AppName = "TranssionLab";
     public const string AppFullName = "TranssionLab Universal Android Servicing Suite";
     public const string AppPublisher = "TranssionLab Open Servicing Engineering";
-    public const string AppVersion = "1.8.0";
+    public const string AppVersion = "1.9.0";
     public const string MainExeName = "TranssionLab.exe";
     public const string UninstallerExeName = "Uninstall-TranssionLab.exe";
     public const string EmbeddedBundleResourceName = "TranssionLabBundle.zip";

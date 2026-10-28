@@ -38,7 +38,10 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
     private readonly ISpdUnisocProvider? _unisoc;
     private readonly IPhoneQuickReadService? _quickRead;
     private readonly DashboardViewModel _homeHub;
+    private readonly FlashManagerViewModel _flashManagerVm;
+    private readonly IReadOnlyList<PageViewModelBase> _settingsGroupPages;
     private readonly List<string> _consoleLines = new();
+    private readonly System.Timers.Timer _clockTimer;
     private CancellationTokenSource? _passiveWatchCts;
     private bool _syncingNav;
 
@@ -292,11 +295,47 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _stepProgressPercent, value);
     }
 
+    private string _buildConfigTitle = "TranssionLab v1.9.0 • Build win-x64 • English";
+    public string BuildConfigTitle
+    {
+        get => _buildConfigTitle;
+        private set => SetProperty(ref _buildConfigTitle, value);
+    }
+
+    private string _unlimitedStatusBadge = "★ LIFETIME UNLIMITED • 0 Credits Required";
+    public string UnlimitedStatusBadge
+    {
+        get => _unlimitedStatusBadge;
+        private set => SetProperty(ref _unlimitedStatusBadge, value);
+    }
+
+    private string _systemClockText = DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+    public string SystemClockText
+    {
+        get => _systemClockText;
+        private set => SetProperty(ref _systemClockText, value);
+    }
+
+    private bool _isPipeline1Active = true;
+    public bool IsPipeline1Active { get => _isPipeline1Active; private set => SetProperty(ref _isPipeline1Active, value); }
+
+    private bool _isPipeline2Active;
+    public bool IsPipeline2Active { get => _isPipeline2Active; private set => SetProperty(ref _isPipeline2Active, value); }
+
+    private bool _isPipeline3Active;
+    public bool IsPipeline3Active { get => _isPipeline3Active; private set => SetProperty(ref _isPipeline3Active, value); }
+
+    private bool _isPipeline4Active;
+    public bool IsPipeline4Active { get => _isPipeline4Active; private set => SetProperty(ref _isPipeline4Active, value); }
+
     public AsyncRelayCommand GlobalScanDevicesCommand { get; }
     public AsyncRelayCommand GlobalReadPhoneInfoCommand { get; }
     public RelayCommand SelectSubTabCommand { get; }
     public RelayCommand NavigateToPageCommand { get; }
     public RelayCommand CancelWaitingCommand { get; }
+    public RelayCommand EmergencyStopCommand { get; }
+    public RelayCommand OpenSettingsWheelCommand { get; }
+    public RelayCommand OpenProfilesSelectorCommand { get; }
     public RelayCommand ReleaseHeldVcomCommand { get; }
     public RelayCommand ToggleAutoCatchCommand { get; }
     public RelayCommand ToggleConsoleCommand { get; }
@@ -338,8 +377,18 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
         _unisoc = unisoc;
         _quickRead = quickRead;
         _homeHub = p1;
+        _flashManagerVm = p14;
+        _settingsGroupPages = [p18, p2, p15, p16, p17, p19];
 
-        AppendConsoleLine("TranssionLab Pro v1.8.0 Ready (Offline-First • Complete Bench Toolset • Bundled ADB & Fastboot)");
+        _clockTimer = new System.Timers.Timer(1000) { AutoReset = true };
+        _clockTimer.Elapsed += (_, _) =>
+        {
+            var nowStr = DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            UiInteractionBridge.RunOnUiThread(() => SystemClockText = nowStr);
+        };
+        _clockTimer.Start();
+
+        AppendConsoleLine("TranssionLab Pro v1.9.0 Ready (English Only • Offline-First • ★ LIFETIME UNLIMITED • 0 Credits)");
         AppendConsoleLine("📋 Connection Steps: 1. Power OFF phone  2. Click Read Info / MTK / META / SPD  3. Plug USB when log says 'Waiting for USB device...'");
         AppendConsoleLine("⚡ Auto-Catch VCOM is ON — Waiting for USB device...");
 
@@ -365,14 +414,18 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
             Pages.Add(page);
         }
 
-        // Build clean OumseGsm-inspired 7-section sidebar + horizontal sub-tabs
-        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("home", "🏠", "Home", "TECNO • Infinix • itel", [p1], ReadInfoFocusOnHome: false));
-        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("read_info", "📱", "Read Info", "VCOM Hold • ADB • Fastboot", [p1, p3], ReadInfoFocusOnHome: true));
-        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("mtk", "🔧", "MTK Service", "BROM • Preloader • META", [p6, p7]));
-        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("spd", "📡", "SPD / Unisoc", "U2S Boot • Diag / AT", [p8, p9]));
-        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("adb", "🤖", "ADB & Fastboot", "ADB • Fastboot • Unlock", [p4, p5, p10]));
-        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("firmware", "📦", "Firmware & Flash", "Partitions • Unpack • Flash", [p13, p11, p14, p12]));
-        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("settings", "⚙", "Drivers & Settings", "USB Drivers • Profiles • Logs", [p2, p15, p17, p16, p18, p19]));
+        // 11 Permanent Scrollable Sidebar Modules (100% Legitimate Hardware, Partition, ROM & Fastboot Servicing)
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m01_meta_part", "⛁", "Partition Manager Meta & ADB", "META • GPT • Super • Read Info", [p1, p13, p7], ReadInfoFocusOnHome: false));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m02_fw_inspect", "🔍", "Firmware Header Inspector", "boot.img • vbmeta • super.img", [p11]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m03_brom_part", "🟣", "Partition & Probe BROM Mode", "0xA0 Sync • SBC/SLA/DAA • GPT", [p6, p13]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m04_mtk_modes", "⚡", "MTK Preloader Boot Modes", "ADVEMETA • FASTBOOT • FACTFACT", [p7, p6]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m05_adb_bench", "🤖", "ADB Bench & App Manager", "Read Info • APK • Logcat • Wi-Fi", [p4, p3, p1], ReadInfoFocusOnHome: true));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m06_trn_bl", "🔓", "Tecno Infinix Bootloader", "Official Unlock Status & Lock", [p10]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m07_spd_bl", "🔐", "SPD/Unisoc Bootloader", "Fastboot Vars • RAM Boot • Lock", [p5, p10]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m08_spd_pac", "📡", "Partition SPD/Unisoc & PAC", "0x7E HDLC Handshake • .pac Table", [p8, p13]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m09_spd_diag", "🩺", "SPD & MTK Diag / AT Mode", "Read-Only 3GPP AT • USB Drivers", [p9, p2]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m10_rom_maker", "🔧", "Transsion Rom Studio", "Extract • Slot A/B • AOSP Check", [p12, p11]));
+        PrimaryNavItems.Add(new PrimaryWorkspaceNavItem("m11_ogt_flash", "🔥", "Fastboot OGT Flasher", "✓ All / ✗ None • Dry-Run • Write", [p14]));
 
         _currentPage = p1;
         _selectedPrimaryNav = PrimaryNavItems[0];
@@ -388,7 +441,7 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
         p1.RequestReadInfoFocusNavigation = () =>
         {
             _homeHub.IsReadInfoFocusMode = true;
-            SelectedPrimaryNav = PrimaryNavItems[1];
+            CurrentPage = p1;
         };
         p1.RequestBootMetaNavigation = () =>
         {
@@ -424,7 +477,7 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
         GlobalReadPhoneInfoCommand = new AsyncRelayCommand(async () =>
         {
             _homeHub.IsReadInfoFocusMode = true;
-            SelectedPrimaryNav = PrimaryNavItems[1];
+            CurrentPage = _homeHub;
             if (_homeHub.ReadPhoneInfoCommand.CanExecute(null))
             {
                 await _homeHub.ReadPhoneInfoCommand.ExecuteAsync().ConfigureAwait(true);
@@ -436,10 +489,6 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
         {
             if (param is PageViewModelBase target)
             {
-                if (ReferenceEquals(target, _homeHub) && SelectedPrimaryNav?.Key == "read_info")
-                {
-                    _homeHub.IsReadInfoFocusMode = true;
-                }
                 CurrentPage = target;
             }
         });
@@ -451,6 +500,56 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
                 _discovery.CancelActiveWait();
             },
             () => IsWaitingForDevice);
+
+        EmergencyStopCommand = new RelayCommand(() =>
+        {
+            _homeHub.CancelQuickRead();
+            _discovery.CancelActiveWait();
+            _flashManagerVm.EmergencyStop();
+            ReleaseHeldVcomPorts();
+            StepBadgeText = "STOPPED";
+            StepProgressPercent = 0;
+            StepDetailText = "Emergency STOP executed — active device waits & held ports aborted.";
+            AppendConsoleLine("🛑 Emergency STOP executed by operator.");
+        });
+
+        OpenSettingsWheelCommand = new RelayCommand(() =>
+        {
+            _syncingNav = true;
+            try
+            {
+                ActiveSubTabs.Clear();
+                foreach (var sp in _settingsGroupPages)
+                {
+                    ActiveSubTabs.Add(sp);
+                }
+                OnPropertyChanged(nameof(HasMultipleSubTabs));
+                SetCurrentPageCore(p18);
+            }
+            finally
+            {
+                _syncingNav = false;
+            }
+        });
+
+        OpenProfilesSelectorCommand = new RelayCommand(() =>
+        {
+            _syncingNav = true;
+            try
+            {
+                ActiveSubTabs.Clear();
+                foreach (var sp in _settingsGroupPages)
+                {
+                    ActiveSubTabs.Add(sp);
+                }
+                OnPropertyChanged(nameof(HasMultipleSubTabs));
+                SetCurrentPageCore(p15);
+            }
+            finally
+            {
+                _syncingNav = false;
+            }
+        });
 
         ReleaseHeldVcomCommand = new RelayCommand(ReleaseHeldVcomPorts);
         ToggleAutoCatchCommand = new RelayCommand(() => IsAutoCatchVcomEnabled = !IsAutoCatchVcomEnabled);
@@ -603,7 +702,7 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
                     {
                         AppendConsoleLine($"⚡ Auto-Catch detected {target.FriendlyName} [{target.VidPidDisplay}] — locking VCOM immediately!");
                         _homeHub.IsReadInfoFocusMode = true;
-                        SelectedPrimaryNav = PrimaryNavItems[1];
+                        CurrentPage = _homeHub;
                     });
 
                     var report = await _quickRead!.CatchAndReadPhoneAsync(
@@ -668,16 +767,29 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
         {
             StepBadgeText = "READY";
             StepProgressPercent = 0;
+            IsPipeline1Active = true;
+            IsPipeline2Active = false;
+            IsPipeline3Active = false;
+            IsPipeline4Active = false;
         }
         else if (step >= total)
         {
             StepBadgeText = $"DONE {step}/{total}";
             StepProgressPercent = 100;
+            IsPipeline1Active = true;
+            IsPipeline2Active = true;
+            IsPipeline3Active = true;
+            IsPipeline4Active = true;
         }
         else
         {
             StepBadgeText = $"STEP {step}/{total}";
-            StepProgressPercent = Math.Round((double)step / total * 100.0, 0);
+            double pct = Math.Round((double)step / total * 100.0, 0);
+            StepProgressPercent = pct;
+            IsPipeline1Active = pct >= 10;
+            IsPipeline2Active = pct >= 35;
+            IsPipeline3Active = pct >= 65;
+            IsPipeline4Active = pct >= 95;
         }
         StepDetailText = detail;
     }
@@ -700,6 +812,8 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        try { _clockTimer.Stop(); } catch { }
+        try { _clockTimer.Dispose(); } catch { }
         try { _passiveWatchCts?.Cancel(); } catch { }
         try { _passiveWatchCts?.Dispose(); } catch { }
         _passiveWatchCts = null;
@@ -771,7 +885,12 @@ public static class ServiceRegistration
         services.AddSingleton<BootloaderManagerViewModel>();
         services.AddSingleton<FlashManagerViewModel>();
         services.AddSingleton<FirmwareExplorerViewModel>();
-        services.AddSingleton<RomStudioViewModel>();
+        services.AddSingleton<RomStudioViewModel>(sp => new RomStudioViewModel(
+            sp.GetRequiredService<RomStudioService>(),
+            sp.GetRequiredService<IFirmwareFormatRegistry>(),
+            sp.GetRequiredService<IAppSettingsService>(),
+            sp.GetRequiredService<IDeviceDiscoveryProvider>(),
+            sp.GetRequiredService<IFastbootProvider>()));
         services.AddSingleton<PartitionManagerViewModel>();
         services.AddSingleton<DeviceProfilesViewModel>();
         services.AddSingleton<OperationHistoryViewModel>();

@@ -64,7 +64,7 @@ jobs:
           if ("${{ github.ref }}" -like "refs/tags/v*") {
             $v = "${{ github.ref_name }}".TrimStart('v')
           } else {
-            $v = "1.8.0"
+            $v = "1.9.0"
           }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 

@@ -268,16 +268,18 @@ public sealed class FirmwareExplorerViewModel : PageViewModelBase
     }
 }
 
-// Page 12: ROM Studio (Section 6 + payload.bin & Sparse-to-Raw Preparation)
+// Page 12: ROM Studio (Section 6 + payload.bin, Sparse-to-Raw & Active Slot Control)
 public sealed class RomStudioViewModel : PageViewModelBase
 {
     private readonly RomStudioService _romStudio;
     private readonly IFirmwareFormatRegistry _firmwareRegistry;
+    private readonly IDeviceDiscoveryProvider? _discovery;
+    private readonly IFastbootProvider? _fastboot;
 
     public override int PageNumber => 12;
-    public override string PageTitle => "ROM Studio";
+    public override string PageTitle => "Transsion ROM Studio";
     public override string NavigationGroup => "SERVICING & FIRMWARE";
-    public override string IconGlyph => "🛠";
+    public override string IconGlyph => "🔧";
 
     private string _stockArchivePath = string.Empty;
     public string StockArchivePath
@@ -326,6 +328,13 @@ public sealed class RomStudioViewModel : PageViewModelBase
         set => SetProperty(ref _aospWorkspacePath, value);
     }
 
+    private string _activeSlotStatusText = "Connect device in Fastboot / Fastbootd to switch Slot A or Slot B.";
+    public string ActiveSlotStatusText
+    {
+        get => _activeSlotStatusText;
+        private set => SetProperty(ref _activeSlotStatusText, value);
+    }
+
     private RomBuildEnvironmentReport? _buildEnvReport;
     public RomBuildEnvironmentReport? BuildEnvReport
     {
@@ -337,24 +346,41 @@ public sealed class RomStudioViewModel : PageViewModelBase
 
     public AsyncRelayCommand ExtractEntryCommand { get; }
     public AsyncRelayCommand UnsparseImageCommand { get; }
+    public AsyncRelayCommand SetSlotACommand { get; }
+    public AsyncRelayCommand SetSlotBCommand { get; }
     public RelayCommand ValidateSourceBuildEnvCommand { get; }
     public RelayCommand BrowseStockArchiveCommand { get; }
+    public RelayCommand BrowseOutputDirectoryCommand { get; }
     public RelayCommand BrowseSparseInputCommand { get; }
     public RelayCommand BrowseAospWorkspaceCommand { get; }
 
-    public RomStudioViewModel(RomStudioService romStudio, IFirmwareFormatRegistry firmwareRegistry, IAppSettingsService settings)
+    public RomStudioViewModel(
+        RomStudioService romStudio,
+        IFirmwareFormatRegistry firmwareRegistry,
+        IAppSettingsService settings,
+        IDeviceDiscoveryProvider? discovery = null,
+        IFastbootProvider? fastboot = null)
     {
         _romStudio = romStudio;
         _firmwareRegistry = firmwareRegistry;
+        _discovery = discovery;
+        _fastboot = fastboot;
         _stagingOutputDirectory = Path.Combine(settings.Current.WorkspaceDataDirectory, "staging_images");
 
         BrowseStockArchiveCommand = new RelayCommand(() =>
         {
             var picked = UiInteractionBridge.PickOpenFile?.Invoke(
                 "Select Stock Firmware Container (.zip / OTA .zip / payload.bin / .tar / .pac / scatter)",
-                "Firmware Containers (*.zip;*.bin;*.tar;*.gz;*.pac;*.txt;*.xml)|*.zip;*.bin;*.tar;*.gz;*.pac;*.txt;*.xml|All Files (*.*)|*.*");
+                "Firmware Containers (*.zip;*.bin;*.tar;*.gz;*.pac;*.txt;*.xml;*.img)|*.zip;*.bin;*.tar;*.gz;*.pac;*.txt;*.xml;*.img|All Files (*.*)|*.*");
             if (!string.IsNullOrWhiteSpace(picked))
                 StockArchivePath = picked;
+        });
+
+        BrowseOutputDirectoryCommand = new RelayCommand(() =>
+        {
+            var dir = UiInteractionBridge.PickDirectory?.Invoke("Select Destination Output Folder");
+            if (!string.IsNullOrWhiteSpace(dir))
+                StagingOutputDirectory = dir;
         });
 
         BrowseSparseInputCommand = new RelayCommand(() =>
@@ -420,6 +446,9 @@ public sealed class RomStudioViewModel : PageViewModelBase
             },
             () => !string.IsNullOrWhiteSpace(SparseInputPath));
 
+        SetSlotACommand = new AsyncRelayCommand(() => SwitchSlotAsync("a"));
+        SetSlotBCommand = new AsyncRelayCommand(() => SwitchSlotAsync("b"));
+
         ValidateSourceBuildEnvCommand = new RelayCommand(() =>
         {
             try
@@ -435,12 +464,47 @@ public sealed class RomStudioViewModel : PageViewModelBase
             }
         });
 
-        StatusBanner = "Extracts partitions from OTA payload.bin / ZIP / TAR / PAC / Scatter and converts Sparse images; validates AOSP custom ROM prerequisites.";
+        StatusBanner = "Ready. Select target firmware container & destination folder, or switch active Slot A / Slot B in Fastboot.";
+    }
+
+    private async Task SwitchSlotAsync(string slot)
+    {
+        if (_discovery is null || _fastboot is null)
+        {
+            ActiveSlotStatusText = "Fastboot slot switching requires live transport services.";
+            return;
+        }
+
+        await RunSafeActivityAsync(async () =>
+        {
+            ConsoleLineSink?.Invoke($"▶ Operation: Switch Active Boot Slot -> Slot {slot.ToUpperInvariant()}");
+            ConsoleLineSink?.Invoke("📋 Instructions: Connect device in Fastboot or Fastbootd mode.");
+            ConsoleLineSink?.Invoke("Waiting for USB device...");
+            var dev = await _discovery.WaitForDeviceAsync(
+                $"Set Active Slot {slot.ToUpperInvariant()}",
+                [ConnectionMode.FastbootBootloader, ConnectionMode.FastbootdUserspace],
+                onProgress: CreateWaitProgressCallback()).ConfigureAwait(true);
+
+            var serial = dev.TransportSerial ?? dev.DeviceKey;
+            var res = await _fastboot.SetActiveSlotAsync(serial, slot).ConfigureAwait(true);
+            ActiveSlotStatusText = res.Succeeded
+                ? $"✓ Active slot switched to Slot {slot.ToUpperInvariant()} on {serial}."
+                : $"Slot {slot.ToUpperInvariant()} command failed on {serial}: {res.StandardError}";
+            StatusBanner = ActiveSlotStatusText;
+            ConsoleLineSink?.Invoke(ActiveSlotStatusText);
+        }, $"Set Slot {slot.ToUpperInvariant()} failed").ConfigureAwait(true);
     }
 }
 
 public sealed class FlashQueueRow : ObservableObject
 {
+    private bool _isEnabled = true;
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set => SetProperty(ref _isEnabled, value);
+    }
+
     public required string PartitionName { get; init; }
     public required string ImageFilePath { get; init; }
 }
@@ -453,7 +517,7 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
     private CancellationTokenSource? _flashCts;
 
     public override int PageNumber => 14;
-    public override string PageTitle => "Flash Manager";
+    public override string PageTitle => "Fastboot OGT Flasher";
     public override string NavigationGroup => "SERVICING & FIRMWARE";
     public override string IconGlyph => "🔥";
 
@@ -544,6 +608,9 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
     public RelayCommand AddToQueueCommand { get; }
     public RelayCommand RemoveSelectedRowCommand { get; }
     public RelayCommand BrowseFlashImageCommand { get; }
+    public RelayCommand SelectAllQueueCommand { get; }
+    public RelayCommand UnselectAllQueueCommand { get; }
+    public RelayCommand ImportFirmwareFolderCommand { get; }
     public RelayCommand ClearQueueCommand { get; }
     public AsyncRelayCommand BuildPlanCommand { get; }
     public AsyncRelayCommand RunDryRunCommand { get; }
@@ -555,7 +622,7 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
         _discovery = discovery;
         _flashManager = flashManager;
 
-        BuildPlanCommand = new AsyncRelayCommand(BuildPlanAsync, () => FlashQueue.Count > 0);
+        BuildPlanCommand = new AsyncRelayCommand(BuildPlanAsync, () => FlashQueue.Any(q => q.IsEnabled));
         RunDryRunCommand = new AsyncRelayCommand(RunDryRunAsync, () => ActivePlan is { BlockedBySafetyPolicy: false });
         ExecuteFlashCommand = new AsyncRelayCommand(
             ExecuteVerifiedFlashAsync,
@@ -567,6 +634,29 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
         CancelBetweenPartitionsCommand = new RelayCommand(
             () => _flashCts?.Cancel(),
             () => IsBusy);
+
+        SelectAllQueueCommand = new RelayCommand(() =>
+        {
+            foreach (var row in FlashQueue) row.IsEnabled = true;
+            BuildPlanCommand.RaiseCanExecuteChanged();
+            StatusBanner = $"Selected all {FlashQueue.Count} queued partition(s).";
+        });
+
+        UnselectAllQueueCommand = new RelayCommand(() =>
+        {
+            foreach (var row in FlashQueue) row.IsEnabled = false;
+            BuildPlanCommand.RaiseCanExecuteChanged();
+            StatusBanner = "Unselected all queued partitions.";
+        });
+
+        ImportFirmwareFolderCommand = new RelayCommand(() =>
+        {
+            var folder = UiInteractionBridge.PickDirectory?.Invoke("Select Unpacked Firmware Folder (.img files)");
+            if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+            {
+                ImportUnprotectedImagesFromDirectory(folder);
+            }
+        });
 
         BrowseFlashImageCommand = new RelayCommand(() =>
         {
@@ -606,15 +696,54 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
 
     public void EnqueuePartitionImage(string partitionName, string imagePath)
     {
-        FlashQueue.Add(new FlashQueueRow
+        var row = new FlashQueueRow
         {
+            IsEnabled = true,
             PartitionName = partitionName.Trim(),
             ImageFilePath = imagePath.Trim()
-        });
+        };
+        row.PropertyChanged += (_, _) => BuildPlanCommand.RaiseCanExecuteChanged();
+        FlashQueue.Add(row);
         ActivePlan = null;
         DryRunReport = null;
         BuildPlanCommand.RaiseCanExecuteChanged();
         StatusBanner = $"Queued '{partitionName.Trim()}' ({FlashQueue.Count} item(s)). Build Plan next.";
+    }
+
+    public int ImportUnprotectedImagesFromDirectory(string directoryPath)
+    {
+        if (!Directory.Exists(directoryPath)) return 0;
+
+        int added = 0;
+        foreach (var imgPath in Directory.GetFiles(directoryPath, "*.img", SearchOption.TopDirectoryOnly).OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            var partName = Path.GetFileNameWithoutExtension(imgPath).Trim();
+            if (string.IsNullOrWhiteSpace(partName) ||
+                HashAndBinaryHelpers.IsProtectedPartition(partName) ||
+                string.Equals(partName, "userdata", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (FlashQueue.Any(q => string.Equals(q.PartitionName, partName, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            EnqueuePartitionImage(partName, imgPath);
+            added++;
+        }
+
+        StatusBanner = added > 0
+            ? $"Imported {added} non-protected .img partition(s) from '{directoryPath}'."
+            : $"No new non-protected .img partitions found in '{directoryPath}'.";
+        ConsoleLineSink?.Invoke($"• Fastboot OGT Flasher: {StatusBanner}");
+        return added;
+    }
+
+    public void EmergencyStop()
+    {
+        try { _flashCts?.Cancel(); } catch { }
     }
 
     public void Dispose()
@@ -627,14 +756,21 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
     {
         await RunSafeActivityAsync(async () =>
         {
+            var activeRows = FlashQueue.Where(q => q.IsEnabled).ToList();
+            if (activeRows.Count == 0)
+            {
+                StatusBanner = "Select at least one partition row (✓) before building an execution plan.";
+                return;
+            }
+
             var dev = await _discovery.WaitForDeviceAsync(
                 "Build & Validate Flash Execution Plan",
                 [ConnectionMode.FastbootBootloader, ConnectionMode.FastbootdUserspace],
                 onProgress: CreateWaitProgressCallback()).ConfigureAwait(true);
 
             DryRunReport = null;
-            StatusBanner = $"Validating {FlashQueue.Count} partition image(s) against {dev.TransportSerial} ({dev.ActiveConnectionMode})...";
-            var tuples = FlashQueue.Select(q => (q.PartitionName, q.ImageFilePath)).ToList();
+            StatusBanner = $"Validating {activeRows.Count} partition image(s) against {dev.TransportSerial} ({dev.ActiveConnectionMode})...";
+            var tuples = activeRows.Select(q => (q.PartitionName, q.ImageFilePath)).ToList();
             ActivePlan = await _flashManager.BuildExecutionPlanAsync(dev, tuples).ConfigureAwait(true);
             StatusBanner = ActivePlan.BlockedBySafetyPolicy
                 ? $"Plan blocked by safety guardrails: {(ActivePlan.SafetyFindings.Count > 0 ? ActivePlan.SafetyFindings[0] : "Policy violation")}"
