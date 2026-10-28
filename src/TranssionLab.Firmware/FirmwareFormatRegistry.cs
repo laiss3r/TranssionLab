@@ -7,8 +7,7 @@ using TranssionLab.Firmware.Parsers;
 namespace TranssionLab.Firmware;
 
 /// <summary>
-/// Format registry and local inspection engine for Firmware Explorer (Section 6).
-/// Accurately distinguishes supported formats from unsupported proprietary containers.
+/// Format registry, binary inspector, payload extractor, and sparse-to-raw converter for Firmware Explorer & Partition Manager.
 /// </summary>
 public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
 {
@@ -26,6 +25,7 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
         FirmwareFormatKind.MediaTekScatterXml,
         FirmwareFormatKind.UnisocPacContainer,
         FirmwareFormatKind.AndroidSparseImage,
+        FirmwareFormatKind.AndroidSuperImage,
         FirmwareFormatKind.AndroidBootImage,
         FirmwareFormatKind.AndroidVendorBootImage,
         FirmwareFormatKind.AndroidVbmetaImage,
@@ -73,6 +73,7 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
         PayloadManifestInfo? payloadInfo = null;
         UnisocPacHeaderInfo? pacInfo = null;
         MediaTekScatterInfo? scatterInfo = null;
+        SuperMetadataInfo? superInfo = null;
         string? chipsetHint = null;
         string? modelHint = null;
         string? fpHint = null;
@@ -166,6 +167,7 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
             {
                 using var fs = File.OpenRead(filePath);
                 sparseInfo = AndroidSparseAndBootParsers.TryParseSparseImage(fs);
+                superInfo = AndroidSparseAndBootParsers.TryParseSuperLpMetadata(fs);
                 var partName = Path.GetFileNameWithoutExtension(fi.Name);
                 long unsparsed = sparseInfo?.TotalUnsparsedBytes ?? fi.Length;
                 if (sparseInfo is { AccountingValid: false })
@@ -184,6 +186,65 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
                     !HashAndBinaryHelpers.IsProtectedPartition(partName),
                     HashAndBinaryHelpers.IsProtectedPartition(partName),
                     $"Sparse v{sparseInfo?.MajorVersion}.{sparseInfo?.MinorVersion} ({sparseInfo?.TotalChunks} chunks -> {unsparsed:N0} B raw)"));
+
+                if (superInfo is not null)
+                {
+                    foreach (var lp in superInfo.LogicalPartitions)
+                    {
+                        partitions.Add(new PartitionImageMetadata(
+                            lp.PartitionName,
+                            $"{fi.Name} (super logical)",
+                            lp.SizeBytes,
+                            lp.SizeBytes,
+                            FirmwareFormatKind.AndroidSuperImage,
+                            null,
+                            null,
+                            null,
+                            true,
+                            false,
+                            $"Dynamic Super Logical Partition [group={lp.GroupName}, extents={lp.ExtentCount}]"));
+                    }
+                }
+                break;
+            }
+
+            case FirmwareFormatKind.AndroidSuperImage:
+            {
+                using var fs = File.OpenRead(filePath);
+                superInfo = AndroidSparseAndBootParsers.TryParseSuperLpMetadata(fs);
+                partitions.Add(new PartitionImageMetadata(
+                    "super",
+                    fi.Name,
+                    fi.Length,
+                    fi.Length,
+                    kind,
+                    sha256,
+                    null,
+                    null,
+                    true,
+                    false,
+                    superInfo is not null
+                        ? $"Super LpMetadata v{superInfo.MajorVersion}.{superInfo.MinorVersion} ({superInfo.LogicalPartitions.Count} logical partitions)"
+                        : formatSummary));
+
+                if (superInfo is not null)
+                {
+                    foreach (var lp in superInfo.LogicalPartitions)
+                    {
+                        partitions.Add(new PartitionImageMetadata(
+                            lp.PartitionName,
+                            $"{fi.Name} (super logical)",
+                            lp.SizeBytes,
+                            lp.SizeBytes,
+                            FirmwareFormatKind.AndroidSuperImage,
+                            null,
+                            null,
+                            null,
+                            true,
+                            false,
+                            $"Dynamic Super Logical Partition [group={lp.GroupName}, extents={lp.ExtentCount}]"));
+                    }
+                }
                 break;
             }
 
@@ -234,7 +295,6 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
                 break;
         }
 
-        // Cross-reference compatible profiles based on modelHint, fpHint, or chipsetHint
         var compatibleProfiles = new List<string>();
         foreach (var prof in _profileRepo.GetAllProfiles())
         {
@@ -276,6 +336,7 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
             PayloadInfo = payloadInfo,
             PacInfo = pacInfo,
             ScatterInfo = scatterInfo,
+            SuperInfo = superInfo,
             CompatibleProfileIds = compatibleProfiles,
             ParsingWarnings = warnings,
             MissingDependencies = missingDeps
@@ -288,6 +349,8 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
         return result;
     }
 
+    private static readonly System.Text.Json.JsonSerializerOptions PrettyBootJsonOptions = new() { WriteIndented = true };
+
     public async Task<string> ExtractArchiveEntryAsync(
         string packagePath,
         string entryName,
@@ -295,12 +358,199 @@ public sealed class FirmwareFormatRegistry : IFirmwareFormatRegistry
         CancellationToken ct = default)
     {
         var format = DetectFormat(packagePath);
-        if (format == FirmwareFormatKind.ZipArchive)
+        if (format == FirmwareFormatKind.AndroidSuperImage ||
+            (format == FirmwareFormatKind.AndroidSparseImage && IsSparseSuperImage(packagePath)))
         {
-            // Could also be AndroidOtaZip; TarAndZipArchiveInspector handles both
+            var safePart = HashAndBinaryHelpers.SanitizeFileNameComponent(Path.GetFileNameWithoutExtension(entryName));
+            if (HashAndBinaryHelpers.IsProtectedPartition(safePart))
+            {
+                throw new SafetyPolicyViolationException($"Extraction of protected partition '{safePart}' is blocked.");
+            }
+            Directory.CreateDirectory(destinationDir);
+            var outImg = Path.Combine(destinationDir, $"{safePart}.img");
+            return await ExtractSuperLogicalPartitionAsync(packagePath, safePart, outImg, ct).ConfigureAwait(false);
         }
+
         var output = await TarAndZipArchiveInspector.ExtractEntrySafeAsync(packagePath, format, entryName, destinationDir, ct).ConfigureAwait(false);
         _logger.LogInfo("ROMStudio", $"Extracted '{entryName}' -> '{output}'");
         return output;
+    }
+
+    private static bool IsSparseSuperImage(string filePath)
+    {
+        try
+        {
+            using var fs = File.OpenRead(filePath);
+            return AndroidSparseAndBootParsers.TryParseSuperLpMetadata(fs) is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<string> ExtractSuperLogicalPartitionAsync(
+        string superImagePath,
+        string logicalPartitionName,
+        string outputImagePath,
+        CancellationToken ct = default)
+    {
+        if (!File.Exists(superImagePath))
+        {
+            throw new ServicingException("SUPER_FILE_NOT_FOUND", $"Super image does not exist: {superImagePath}");
+        }
+
+        var cleanName = logicalPartitionName.Trim();
+        if (HashAndBinaryHelpers.IsProtectedPartition(cleanName))
+        {
+            throw new SafetyPolicyViolationException($"Extraction of protected partition '{cleanName}' is blocked.");
+        }
+
+        var fullOut = Path.GetFullPath(outputImagePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullOut)!);
+
+        var format = DetectFormat(superImagePath);
+        string? tempUnsparsedPath = null;
+        string rawSuperPath = superImagePath;
+
+        try
+        {
+            if (format == FirmwareFormatKind.AndroidSparseImage)
+            {
+                tempUnsparsedPath = Path.Combine(Path.GetDirectoryName(fullOut)!, $".tmp_super_raw_{Guid.NewGuid():N}.img");
+                await ConvertSparseImageToRawAsync(superImagePath, tempUnsparsedPath, ct).ConfigureAwait(false);
+                rawSuperPath = tempUnsparsedPath;
+            }
+
+            long bytesWritten;
+            await using (var superFs = new FileStream(rawSuperPath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true))
+            await using (var outFs = new FileStream(fullOut, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 65536, useAsync: true))
+            {
+                bytesWritten = await AndroidSparseAndBootParsers.ExtractSuperLogicalPartitionToStreamAsync(superFs, cleanName, outFs, ct).ConfigureAwait(false);
+            }
+
+            _logger.LogInfo("FirmwareExplorer", $"Extracted logical partition '{cleanName}' from '{Path.GetFileName(superImagePath)}' -> '{fullOut}' ({bytesWritten:N0} B)");
+            return fullOut;
+        }
+        finally
+        {
+            if (tempUnsparsedPath is not null && File.Exists(tempUnsparsedPath))
+            {
+                try { File.Delete(tempUnsparsedPath); } catch { }
+            }
+        }
+    }
+
+    public async Task<BootImageUnpackReport> UnpackBootOrVendorBootImageAsync(
+        string bootImagePath,
+        string outputDirectory,
+        CancellationToken ct = default)
+    {
+        if (!File.Exists(bootImagePath))
+        {
+            throw new ServicingException("BOOT_FILE_NOT_FOUND", $"Boot image does not exist: {bootImagePath}");
+        }
+
+        var fullDir = Path.GetFullPath(outputDirectory);
+        Directory.CreateDirectory(fullDir);
+
+        await using var fs = new FileStream(bootImagePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true);
+        var (header, kernelRange, ramdiskRange, dtbRange) = AndroidSparseAndBootParsers.ParseBootUnpackLayout(fs);
+
+        string? kernelPath = null;
+        string? ramdiskPath = null;
+        string? dtbPath = null;
+
+        if (kernelRange is { } kr && kr.Offset + kr.Size <= fs.Length)
+        {
+            kernelPath = Path.Combine(fullDir, "kernel");
+            await SliceFileRegionAsync(fs, kr.Offset, kr.Size, kernelPath, ct).ConfigureAwait(false);
+        }
+
+        if (ramdiskRange is { } rr && rr.Offset + rr.Size <= fs.Length)
+        {
+            ramdiskPath = Path.Combine(fullDir, header.HeaderMagic == "VNDRBOOT" ? "vendor_ramdisk.cpio" : "ramdisk.cpio");
+            await SliceFileRegionAsync(fs, rr.Offset, rr.Size, ramdiskPath, ct).ConfigureAwait(false);
+        }
+
+        if (dtbRange is { } dr && dr.Offset + dr.Size <= fs.Length)
+        {
+            dtbPath = Path.Combine(fullDir, "dtb");
+            await SliceFileRegionAsync(fs, dr.Offset, dr.Size, dtbPath, ct).ConfigureAwait(false);
+        }
+
+        var metaPath = Path.Combine(fullDir, "boot_header_info.json");
+        var metaPayload = new
+        {
+            SourceFile = Path.GetFileName(bootImagePath),
+            header.HeaderMagic,
+            header.HeaderVersion,
+            header.PageSizeBytes,
+            header.KernelSizeBytes,
+            header.RamdiskSizeBytes,
+            header.SecondOrDtbSizeBytes,
+            header.DecodedOsVersion,
+            header.DecodedSecurityPatch,
+            header.CommandLine,
+            ExtractedKernel = kernelPath,
+            ExtractedRamdisk = ramdiskPath,
+            ExtractedDtb = dtbPath
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(metaPayload, PrettyBootJsonOptions);
+        await File.WriteAllTextAsync(metaPath, json, ct).ConfigureAwait(false);
+
+        var summary = $"Unpacked {header.HeaderMagic} v{header.HeaderVersion} -> Kernel={(kernelPath is not null ? $"{header.KernelSizeBytes:N0} B" : "none")}, Ramdisk={(ramdiskPath is not null ? $"{header.RamdiskSizeBytes:N0} B" : "none")}, DTB={(dtbPath is not null ? $"{header.SecondOrDtbSizeBytes:N0} B" : "none")} in '{fullDir}'";
+        _logger.LogInfo("FirmwareExplorer", summary);
+        return new BootImageUnpackReport(
+            Path.GetFullPath(bootImagePath),
+            fullDir,
+            header.HeaderMagic,
+            header.HeaderVersion,
+            header.PageSizeBytes,
+            kernelPath,
+            ramdiskPath,
+            dtbPath,
+            metaPath,
+            summary);
+    }
+
+    private static async Task SliceFileRegionAsync(FileStream src, long offset, uint size, string outPath, CancellationToken ct)
+    {
+        src.Position = offset;
+        await using var dst = new FileStream(outPath, FileMode.Create, FileAccess.Write, FileShare.None, 65536, useAsync: true);
+        byte[] buf = new byte[65536];
+        long rem = size;
+        while (rem > 0)
+        {
+            int take = (int)Math.Min(buf.Length, rem);
+            int got = await src.ReadAsync(buf.AsMemory(0, take), ct).ConfigureAwait(false);
+            if (got <= 0) break;
+            await dst.WriteAsync(buf.AsMemory(0, got), ct).ConfigureAwait(false);
+            rem -= got;
+        }
+    }
+
+    public async Task<string> ConvertSparseImageToRawAsync(
+        string sparseImagePath,
+        string outputRawImagePath,
+        CancellationToken ct = default)
+    {
+        if (!File.Exists(sparseImagePath))
+        {
+            throw new ServicingException("SPARSE_FILE_NOT_FOUND", $"Sparse image does not exist: {sparseImagePath}");
+        }
+
+        var fullOut = Path.GetFullPath(outputRawImagePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullOut)!);
+
+        long totalBytes;
+        await using (var inFs = new FileStream(sparseImagePath, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, useAsync: true))
+        await using (var outFs = new FileStream(fullOut, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 65536, useAsync: true))
+        {
+            totalBytes = await AndroidSparseAndBootParsers.ConvertSparseToRawAsync(inFs, outFs, ct).ConfigureAwait(false);
+        }
+
+        _logger.LogInfo("FirmwareExplorer", $"Unsparsed '{Path.GetFileName(sparseImagePath)}' -> '{fullOut}' ({totalBytes:N0} B)");
+        return fullOut;
     }
 }

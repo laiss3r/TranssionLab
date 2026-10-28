@@ -28,11 +28,12 @@ TranssionLab inspects Windows Plug and Play (`Win32_PnPEntity`) error codes with
 - **.NET 8 Runtime & WPF (`Microsoft.NETCore.App`, `Microsoft.WindowsDesktop.App`)** — MIT License.
 - **`Microsoft.Extensions.DependencyInjection` (8.0.1)** — MIT License.
 - **`System.IO.Ports` (8.0.0), `System.Management` (8.0.0), `System.IO.Hashing` (8.0.0)** — MIT License.
+- **`SharpCompress` (0.50.7) & `ZstdSharp.Port`** — MIT License (used offline for `payload.bin` BZip2, XZ/LZMA2, and ZStandard partition chunk decompression).
 
-### External Redistributable Utilities (User-Configured or Separately Downloaded)
-- **Android SDK Platform-Tools (`adb.exe`, `fastboot.exe`, `AdbWinApi.dll`, `AdbWinUsbApi.dll`)**
-  - License: **Apache License 2.0** (Copyright Google LLC / The Android Open Source Project).
-  - Configure in **Page #17 (Settings)** or place in `tools/` / system `PATH`.
+### Bundled / Redistributable Open-Source Utilities (Apache License 2.0)
+- **Android SDK Platform-Tools (`adb.exe`, `fastboot.exe`, `AdbWinApi.dll`, `AdbWinUsbApi.dll`, `libwinpthread-1.dll`, `NOTICE.txt`)**
+  - License: **Apache License 2.0** (Copyright Google LLC / The Android Open Source Project; full license text included in `platform-tools/NOTICE.txt`).
+  - Installed automatically into `platform-tools/` by the Setup installer and configurable in **Page #18 (Settings)**.
 
 ### Proprietary Components Explicitly NOT Redistributed
 To maintain strict legal compliance, the following proprietary binaries and assets are **never** included in this repository or its release artifacts:

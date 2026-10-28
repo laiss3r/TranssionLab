@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using TranssionLab.Core.Enums;
 using TranssionLab.Core.Interfaces;
 using TranssionLab.Core.Models;
 using TranssionLab.Firmware;
@@ -6,10 +7,12 @@ using TranssionLab.ViewModels.Mvvm;
 
 namespace TranssionLab.ViewModels.Pages;
 
-// Page 11: Firmware Explorer (Section 6)
+// Page 11: Firmware Explorer (Section 6 + Direct Partition Extraction & Sparse Conversion)
 public sealed class FirmwareExplorerViewModel : PageViewModelBase
 {
     private readonly IFirmwareFormatRegistry _registry;
+    private readonly FlashManagerViewModel _flashManagerVm;
+    private readonly string _stagingDir;
 
     public override int PageNumber => 11;
     public override string PageTitle => "Firmware Explorer";
@@ -34,7 +37,12 @@ public sealed class FirmwareExplorerViewModel : PageViewModelBase
         private set
         {
             if (SetProperty(ref _inspectionResult, value))
+            {
                 OnPropertyChanged(nameof(HasInspectionResult));
+                ConvertSparseToRawCommand.RaiseCanExecuteChanged();
+                UnpackBootImageCommand.RaiseCanExecuteChanged();
+                ExtractSelectedPartitionCommand.RaiseCanExecuteChanged();
+            }
         }
     }
 
@@ -44,15 +52,40 @@ public sealed class FirmwareExplorerViewModel : PageViewModelBase
     public ObservableCollection<FirmwareArchiveEntry> ArchiveEntries { get; } = new();
     public ObservableCollection<string> WarningsAndNotes { get; } = new();
 
+    private PartitionImageMetadata? _selectedPartitionRow;
+    public PartitionImageMetadata? SelectedPartitionRow
+    {
+        get => _selectedPartitionRow;
+        set
+        {
+            if (SetProperty(ref _selectedPartitionRow, value))
+            {
+                ExtractSelectedPartitionCommand.RaiseCanExecuteChanged();
+                StageSelectedPartitionCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     public AsyncRelayCommand InspectFirmwareCommand { get; }
     public RelayCommand BrowseFirmwareFileCommand { get; }
+    public AsyncRelayCommand ExtractSelectedPartitionCommand { get; }
+    public AsyncRelayCommand ConvertSparseToRawCommand { get; }
+    public AsyncRelayCommand UnpackBootImageCommand { get; }
+    public AsyncRelayCommand StageSelectedPartitionCommand { get; }
 
-    public FirmwareExplorerViewModel(IFirmwareFormatRegistry registry)
+    public FirmwareExplorerViewModel(
+        IFirmwareFormatRegistry registry,
+        FlashManagerViewModel flashManagerVm,
+        IAppSettingsService settings)
     {
         _registry = registry;
+        _flashManagerVm = flashManagerVm;
+        _stagingDir = Path.Combine(settings.Current.WorkspaceDataDirectory, "staging_images");
+
         InspectFirmwareCommand = new AsyncRelayCommand(
             InspectAsync,
             () => !string.IsNullOrWhiteSpace(SelectedFilePath));
+
         BrowseFirmwareFileCommand = new RelayCommand(() =>
         {
             var picked = UiInteractionBridge.PickOpenFile?.Invoke(
@@ -61,6 +94,35 @@ public sealed class FirmwareExplorerViewModel : PageViewModelBase
             if (!string.IsNullOrWhiteSpace(picked))
                 SelectedFilePath = picked;
         });
+
+        ExtractSelectedPartitionCommand = new AsyncRelayCommand(
+            ExtractSelectedAsync,
+            () => InspectionResult is not null &&
+                  SelectedPartitionRow is { IsProtectedNvOrRadio: false } &&
+                  (InspectionResult.SuperInfo is not null ||
+                   InspectionResult.PackageFormat is
+                       FirmwareFormatKind.ZipArchive or
+                       FirmwareFormatKind.AndroidOtaZip or
+                       FirmwareFormatKind.AndroidPayloadBin or
+                       FirmwareFormatKind.AndroidSuperImage or
+                       FirmwareFormatKind.TarArchive or
+                       FirmwareFormatKind.TarGzipArchive or
+                       FirmwareFormatKind.UnisocPacContainer or
+                       FirmwareFormatKind.MediaTekScatterText or
+                       FirmwareFormatKind.MediaTekScatterXml));
+
+        ConvertSparseToRawCommand = new AsyncRelayCommand(
+            ConvertSparseAsync,
+            () => InspectionResult is { PackageFormat: FirmwareFormatKind.AndroidSparseImage });
+
+        UnpackBootImageCommand = new AsyncRelayCommand(
+            UnpackBootAsync,
+            () => InspectionResult is { PackageFormat: FirmwareFormatKind.AndroidBootImage or FirmwareFormatKind.AndroidVendorBootImage });
+
+        StageSelectedPartitionCommand = new AsyncRelayCommand(
+            StageSelectedToFlashAsync,
+            () => InspectionResult is not null && SelectedPartitionRow is { IsProtectedNvOrRadio: false });
+
         StatusBanner = $"Supported formats: {string.Join(", ", _registry.SupportedFormats)}";
     }
 
@@ -74,6 +136,7 @@ public sealed class FirmwareExplorerViewModel : PageViewModelBase
 
             Partitions.Clear();
             foreach (var p in res.Partitions) Partitions.Add(p);
+            SelectedPartitionRow = Partitions.FirstOrDefault(p => !p.IsProtectedNvOrRadio);
 
             ArchiveEntries.Clear();
             foreach (var a in res.ArchiveEntries) ArchiveEntries.Add(a);
@@ -93,9 +156,119 @@ public sealed class FirmwareExplorerViewModel : PageViewModelBase
             IsBusy = false;
         }
     }
+
+    private async Task ExtractSelectedAsync()
+    {
+        if (InspectionResult is null || SelectedPartitionRow is null) return;
+        IsBusy = true;
+        try
+        {
+            var outFile = await _registry.ExtractArchiveEntryAsync(
+                InspectionResult.SourcePath,
+                SelectedPartitionRow.PartitionName,
+                _stagingDir).ConfigureAwait(true);
+            var msg = $"Extracted '{SelectedPartitionRow.PartitionName}' -> '{outFile}'.";
+            LogConsole($"✓ {msg}");
+            StatusBanner = msg;
+        }
+        catch (Exception ex)
+        {
+            LogConsole($"✗ Extraction failed: {ex.Message}");
+            StatusBanner = $"Extraction failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ConvertSparseAsync()
+    {
+        if (InspectionResult is null) return;
+        IsBusy = true;
+        try
+        {
+            Directory.CreateDirectory(_stagingDir);
+            var rawName = Path.GetFileNameWithoutExtension(InspectionResult.FileName) + ".raw.img";
+            var outPath = Path.Combine(_stagingDir, rawName);
+            var saved = await _registry.ConvertSparseImageToRawAsync(InspectionResult.SourcePath, outPath).ConfigureAwait(true);
+            var msg = $"Converted Sparse image to Raw image -> '{saved}'.";
+            LogConsole($"✓ {msg}");
+            StatusBanner = msg;
+        }
+        catch (Exception ex)
+        {
+            LogConsole($"✗ Sparse conversion failed: {ex.Message}");
+            StatusBanner = $"Sparse conversion failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task UnpackBootAsync()
+    {
+        if (InspectionResult is null) return;
+        IsBusy = true;
+        try
+        {
+            var subDir = Path.Combine(_stagingDir, $"{Path.GetFileNameWithoutExtension(InspectionResult.FileName)}_unpacked");
+            var report = await _registry.UnpackBootOrVendorBootImageAsync(InspectionResult.SourcePath, subDir).ConfigureAwait(true);
+            LogConsole($"✓ {report.Summary}");
+            StatusBanner = report.Summary;
+        }
+        catch (Exception ex)
+        {
+            LogConsole($"✗ Boot unpack failed: {ex.Message}");
+            StatusBanner = $"Boot unpack failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task StageSelectedToFlashAsync()
+    {
+        if (InspectionResult is null || SelectedPartitionRow is null) return;
+        IsBusy = true;
+        try
+        {
+            string imagePath;
+            if (InspectionResult.SuperInfo is null &&
+                InspectionResult.PackageFormat is
+                    FirmwareFormatKind.AndroidSparseImage or
+                    FirmwareFormatKind.AndroidBootImage or
+                    FirmwareFormatKind.AndroidVendorBootImage or
+                    FirmwareFormatKind.AndroidVbmetaImage or
+                    FirmwareFormatKind.RawPartitionImage)
+            {
+                imagePath = InspectionResult.SourcePath;
+            }
+            else
+            {
+                imagePath = await _registry.ExtractArchiveEntryAsync(
+                    InspectionResult.SourcePath,
+                    SelectedPartitionRow.PartitionName,
+                    _stagingDir).ConfigureAwait(true);
+            }
+
+            _flashManagerVm.EnqueuePartitionImage(SelectedPartitionRow.PartitionName, imagePath);
+            StatusBanner = $"Staged '{SelectedPartitionRow.PartitionName}' ({Path.GetFileName(imagePath)}) into Flash Manager (#14).";
+        }
+        catch (Exception ex)
+        {
+            StatusBanner = $"Staging failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }
 
-// Page 12: ROM Studio (Section 6)
+// Page 12: ROM Studio (Section 6 + payload.bin & Sparse-to-Raw Preparation)
 public sealed class RomStudioViewModel : PageViewModelBase
 {
     private readonly RomStudioService _romStudio;
@@ -117,7 +290,7 @@ public sealed class RomStudioViewModel : PageViewModelBase
         }
     }
 
-    private string _entryToExtract = "boot.img";
+    private string _entryToExtract = "boot";
     public string EntryToExtract
     {
         get => _entryToExtract;
@@ -133,6 +306,17 @@ public sealed class RomStudioViewModel : PageViewModelBase
     {
         get => _stagingOutputDirectory;
         set => SetProperty(ref _stagingOutputDirectory, value);
+    }
+
+    private string _sparseInputPath = string.Empty;
+    public string SparseInputPath
+    {
+        get => _sparseInputPath;
+        set
+        {
+            if (SetProperty(ref _sparseInputPath, value))
+                UnsparseImageCommand.RaiseCanExecuteChanged();
+        }
     }
 
     private string _aospWorkspacePath = string.Empty;
@@ -152,8 +336,10 @@ public sealed class RomStudioViewModel : PageViewModelBase
     public ObservableCollection<string> ExtractedFiles { get; } = new();
 
     public AsyncRelayCommand ExtractEntryCommand { get; }
+    public AsyncRelayCommand UnsparseImageCommand { get; }
     public RelayCommand ValidateSourceBuildEnvCommand { get; }
     public RelayCommand BrowseStockArchiveCommand { get; }
+    public RelayCommand BrowseSparseInputCommand { get; }
     public RelayCommand BrowseAospWorkspaceCommand { get; }
 
     public RomStudioViewModel(RomStudioService romStudio, IFirmwareFormatRegistry firmwareRegistry, IAppSettingsService settings)
@@ -165,10 +351,19 @@ public sealed class RomStudioViewModel : PageViewModelBase
         BrowseStockArchiveCommand = new RelayCommand(() =>
         {
             var picked = UiInteractionBridge.PickOpenFile?.Invoke(
-                "Select Stock Firmware Archive (.zip / .tar / .pac)",
-                "Firmware Containers (*.zip;*.tar;*.gz;*.pac)|*.zip;*.tar;*.gz;*.pac|All Files (*.*)|*.*");
+                "Select Stock Firmware Container (.zip / OTA .zip / payload.bin / .tar / .pac / scatter)",
+                "Firmware Containers (*.zip;*.bin;*.tar;*.gz;*.pac;*.txt;*.xml)|*.zip;*.bin;*.tar;*.gz;*.pac;*.txt;*.xml|All Files (*.*)|*.*");
             if (!string.IsNullOrWhiteSpace(picked))
                 StockArchivePath = picked;
+        });
+
+        BrowseSparseInputCommand = new RelayCommand(() =>
+        {
+            var picked = UiInteractionBridge.PickOpenFile?.Invoke(
+                "Select Android Sparse Image (0xED26FF3A)",
+                "Sparse Images (*.img;*.bin)|*.img;*.bin|All Files (*.*)|*.*");
+            if (!string.IsNullOrWhiteSpace(picked))
+                SparseInputPath = picked;
         });
 
         BrowseAospWorkspaceCommand = new RelayCommand(() =>
@@ -188,8 +383,8 @@ public sealed class RomStudioViewModel : PageViewModelBase
                         StockArchivePath, [EntryToExtract], StagingOutputDirectory).ConfigureAwait(true);
                     foreach (var f in extracted) ExtractedFiles.Add(f);
                     StatusBanner = extracted.Count > 0
-                        ? $"Extracted to '{extracted[0]}'."
-                        : "No unprotected entry extracted.";
+                        ? $"Extracted & verified -> '{extracted[0]}'."
+                        : "Skipped protected NVRAM/radio entry.";
                 }
                 catch (Exception ex)
                 {
@@ -202,15 +397,45 @@ public sealed class RomStudioViewModel : PageViewModelBase
             },
             () => !string.IsNullOrWhiteSpace(StockArchivePath) && !string.IsNullOrWhiteSpace(EntryToExtract));
 
+        UnsparseImageCommand = new AsyncRelayCommand(
+            async () =>
+            {
+                IsBusy = true;
+                try
+                {
+                    Directory.CreateDirectory(StagingOutputDirectory);
+                    var rawOut = Path.Combine(StagingOutputDirectory, Path.GetFileNameWithoutExtension(SparseInputPath) + ".raw.img");
+                    var saved = await _firmwareRegistry.ConvertSparseImageToRawAsync(SparseInputPath, rawOut).ConfigureAwait(true);
+                    ExtractedFiles.Add(saved);
+                    StatusBanner = $"Unsparsed image -> '{saved}'.";
+                }
+                catch (Exception ex)
+                {
+                    StatusBanner = $"Sparse conversion error: {ex.Message}";
+                }
+                finally
+                {
+                    IsBusy = false;
+                }
+            },
+            () => !string.IsNullOrWhiteSpace(SparseInputPath));
+
         ValidateSourceBuildEnvCommand = new RelayCommand(() =>
         {
-            BuildEnvReport = _romStudio.ValidateCustomRomSourceWorkspace(AospWorkspacePath);
-            StatusBanner = BuildEnvReport.ReadyForSourceBuild
-                ? "Workspace satisfies AOSP/LineageOS custom ROM source build prerequisites."
-                : $"Source build workspace incomplete ({BuildEnvReport.ValidationFindings.Count} requirement finding(s)).";
+            try
+            {
+                BuildEnvReport = _romStudio.ValidateCustomRomSourceWorkspace(AospWorkspacePath);
+                StatusBanner = BuildEnvReport.ReadyForSourceBuild
+                    ? "Workspace satisfies AOSP/LineageOS custom ROM source build prerequisites."
+                    : $"Source build workspace incomplete ({BuildEnvReport.ValidationFindings.Count} requirement finding(s)).";
+            }
+            catch (Exception ex)
+            {
+                StatusBanner = $"Workspace validation error: {ex.Message}";
+            }
         });
 
-        StatusBanner = "Stock Extraction prepares verified partition images; Custom ROM builds require full AOSP source, device trees, kernel, and >=350 GiB Linux/WSL2 storage.";
+        StatusBanner = "Extracts partitions from OTA payload.bin / ZIP / TAR / PAC / Scatter and converts Sparse images; validates AOSP custom ROM prerequisites.";
     }
 }
 
@@ -220,14 +445,14 @@ public sealed class FlashQueueRow : ObservableObject
     public required string ImageFilePath { get; init; }
 }
 
-// Page 13: Safe 11-Step Flash Manager (Section 7)
+// Page 14: Safe 11-Step Flash Manager (Section 7)
 public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
 {
     private readonly IDeviceDiscoveryProvider _discovery;
     private readonly IFlashManager _flashManager;
     private CancellationTokenSource? _flashCts;
 
-    public override int PageNumber => 13;
+    public override int PageNumber => 14;
     public override string PageTitle => "Flash Manager";
     public override string NavigationGroup => "SERVICING & FIRMWARE";
     public override string IconGlyph => "🔥";
@@ -247,6 +472,17 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
     }
 
     public ObservableCollection<FlashQueueRow> FlashQueue { get; } = new();
+
+    private FlashQueueRow? _selectedQueueRow;
+    public FlashQueueRow? SelectedQueueRow
+    {
+        get => _selectedQueueRow;
+        set
+        {
+            if (SetProperty(ref _selectedQueueRow, value))
+                RemoveSelectedRowCommand.RaiseCanExecuteChanged();
+        }
+    }
 
     private FlashExecutionPlan? _activePlan;
     public FlashExecutionPlan? ActivePlan
@@ -306,6 +542,7 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
     }
 
     public RelayCommand AddToQueueCommand { get; }
+    public RelayCommand RemoveSelectedRowCommand { get; }
     public RelayCommand BrowseFlashImageCommand { get; }
     public RelayCommand ClearQueueCommand { get; }
     public AsyncRelayCommand BuildPlanCommand { get; }
@@ -341,15 +578,21 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
         });
 
         AddToQueueCommand = new RelayCommand(
+            () => EnqueuePartitionImage(NewPartitionName, NewImageFilePath),
+            () => !string.IsNullOrWhiteSpace(NewPartitionName) && !string.IsNullOrWhiteSpace(NewImageFilePath));
+
+        RemoveSelectedRowCommand = new RelayCommand(
             () =>
             {
-                FlashQueue.Add(new FlashQueueRow { PartitionName = NewPartitionName.Trim(), ImageFilePath = NewImageFilePath.Trim() });
-                ActivePlan = null;
-                DryRunReport = null;
-                BuildPlanCommand.RaiseCanExecuteChanged();
-                StatusBanner = $"Queued '{NewPartitionName.Trim()}' ({FlashQueue.Count} item(s)). Build Plan next.";
+                if (SelectedQueueRow is not null)
+                {
+                    FlashQueue.Remove(SelectedQueueRow);
+                    ActivePlan = null;
+                    DryRunReport = null;
+                    BuildPlanCommand.RaiseCanExecuteChanged();
+                }
             },
-            () => !string.IsNullOrWhiteSpace(NewPartitionName) && !string.IsNullOrWhiteSpace(NewImageFilePath));
+            () => SelectedQueueRow is not null);
 
         ClearQueueCommand = new RelayCommand(() =>
         {
@@ -361,6 +604,19 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
         });
     }
 
+    public void EnqueuePartitionImage(string partitionName, string imagePath)
+    {
+        FlashQueue.Add(new FlashQueueRow
+        {
+            PartitionName = partitionName.Trim(),
+            ImageFilePath = imagePath.Trim()
+        });
+        ActivePlan = null;
+        DryRunReport = null;
+        BuildPlanCommand.RaiseCanExecuteChanged();
+        StatusBanner = $"Queued '{partitionName.Trim()}' ({FlashQueue.Count} item(s)). Build Plan next.";
+    }
+
     public void Dispose()
     {
         _flashCts?.Dispose();
@@ -369,42 +625,40 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
 
     private async Task BuildPlanAsync()
     {
-        try
+        await RunSafeActivityAsync(async () =>
         {
-            var dev = _discovery.RequireExplicitlySelectedDevice();
-            IsBusy = true;
+            var dev = await _discovery.WaitForDeviceAsync(
+                "Build & Validate Flash Execution Plan",
+                [ConnectionMode.FastbootBootloader, ConnectionMode.FastbootdUserspace],
+                onProgress: CreateWaitProgressCallback()).ConfigureAwait(true);
+
             DryRunReport = null;
+            StatusBanner = $"Validating {FlashQueue.Count} partition image(s) against {dev.TransportSerial} ({dev.ActiveConnectionMode})...";
             var tuples = FlashQueue.Select(q => (q.PartitionName, q.ImageFilePath)).ToList();
             ActivePlan = await _flashManager.BuildExecutionPlanAsync(dev, tuples).ConfigureAwait(true);
             StatusBanner = ActivePlan.BlockedBySafetyPolicy
                 ? $"Plan blocked by safety guardrails: {(ActivePlan.SafetyFindings.Count > 0 ? ActivePlan.SafetyFindings[0] : "Policy violation")}"
                 : $"Plan {ActivePlan.PlanId} ready ({ActivePlan.ProposedSteps.Count} steps). Run Dry-Run Validation next.";
-        }
-        catch (Exception ex)
-        {
-            StatusBanner = ex.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        }, "Flash plan build failed").ConfigureAwait(true);
     }
 
     private async Task RunDryRunAsync()
     {
         if (ActivePlan is null) return;
-        IsBusy = true;
-        try
+        await RunSafeActivityAsync(async () =>
         {
+            await _discovery.WaitForDeviceAsync(
+                "Dry-Run Pre-Flight Check",
+                [ConnectionMode.FastbootBootloader, ConnectionMode.FastbootdUserspace],
+                TimeSpan.FromSeconds(20),
+                CreateWaitProgressCallback()).ConfigureAwait(true);
+
+            StatusBanner = $"Running 11-step Dry-Run validation for {ActivePlan.PlanId}...";
             DryRunReport = await _flashManager.RunDryRunValidationAsync(ActivePlan).ConfigureAwait(true);
             StatusBanner = DryRunReport.Passed
                 ? $"Dry-Run PASSED. Confirm risk and type '{ActivePlan.RequiredConfirmationText}' to enable Write."
                 : $"Dry-Run FAILED: {string.Join("; ", DryRunReport.BlockingErrors)}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        }, "Dry-Run validation failed").ConfigureAwait(true);
     }
 
     private async Task ExecuteVerifiedFlashAsync()
@@ -416,6 +670,14 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
 
         try
         {
+            await _discovery.WaitForDeviceAsync(
+                "Execute Validated Flash Plan",
+                [ConnectionMode.FastbootBootloader, ConnectionMode.FastbootdUserspace],
+                TimeSpan.FromSeconds(25),
+                CreateWaitProgressCallback(),
+                _flashCts.Token).ConfigureAwait(true);
+            IsWaitingForDevice = false;
+
             var token = new FlashConfirmationToken(
                 ActivePlan.PlanId,
                 ActivePlan.PlanHashSha256,
@@ -424,10 +686,11 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
                 DateTimeOffset.UtcNow);
 
             var prog = new Progress<(int StepIndex, int TotalSteps, string Status)>(p =>
-            {
-                ProgressPercent = p.TotalSteps > 0 ? (p.StepIndex * 100) / p.TotalSteps : 0;
-                StatusBanner = $"[{p.StepIndex}/{p.TotalSteps}] {p.Status}";
-            });
+                UiInteractionBridge.RunOnUiThread(() =>
+                {
+                    ProgressPercent = p.TotalSteps > 0 ? (p.StepIndex * 100) / p.TotalSteps : 0;
+                    StatusBanner = $"[{p.StepIndex}/{p.TotalSteps}] {p.Status}";
+                }));
 
             LastOperationReport = await _flashManager.ExecutePlanAsync(
                 ActivePlan, DryRunReport, token, prog, _flashCts.Token).ConfigureAwait(true);
@@ -436,12 +699,18 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
             ConfirmationText = string.Empty;
             RiskAcknowledged = false;
         }
+        catch (OperationCanceledException)
+        {
+            StatusBanner = "Flash cancelled safely by user.";
+        }
         catch (Exception ex)
         {
             StatusBanner = $"Flash aborted: {ex.Message}";
+            UiInteractionBridge.OnCommandException?.Invoke(ex);
         }
         finally
         {
+            IsWaitingForDevice = false;
             _flashCts.Dispose();
             _flashCts = null;
             IsBusy = false;
@@ -450,12 +719,13 @@ public sealed class FlashManagerViewModel : PageViewModelBase, IDisposable
     }
 }
 
-// Page 14: Device Profiles Catalog & Local JSON Importer
+// Page 15: Device Profiles Catalog, JSON Importer & Bench Verification Sign-Off
 public sealed class DeviceProfilesViewModel : PageViewModelBase
 {
     private readonly IDeviceProfileRepository _repo;
+    private readonly IDeviceDiscoveryProvider _discovery;
 
-    public override int PageNumber => 14;
+    public override int PageNumber => 15;
     public override string PageTitle => "Device Profiles";
     public override string NavigationGroup => "PROFILES & TELEMETRY";
     public override string IconGlyph => "📱";
@@ -488,21 +758,61 @@ public sealed class DeviceProfilesViewModel : PageViewModelBase
     public DeviceProfile? SelectedProfile
     {
         get => _selectedProfile;
-        set => SetProperty(ref _selectedProfile, value);
+        set
+        {
+            if (SetProperty(ref _selectedProfile, value))
+            {
+                PromoteSelectedProfileCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    private string _benchTesterName = Environment.UserName;
+    public string BenchTesterName
+    {
+        get => _benchTesterName;
+        set
+        {
+            if (SetProperty(ref _benchTesterName, value))
+                PromoteSelectedProfileCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    private string _benchTestedFingerprint = string.Empty;
+    public string BenchTestedFingerprint
+    {
+        get => _benchTestedFingerprint;
+        set
+        {
+            if (SetProperty(ref _benchTestedFingerprint, value))
+                PromoteSelectedProfileCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    private string _benchNotes = "Verified live ADB getprop, Fastboot variables, and partition table on physical handset.";
+    public string BenchNotes
+    {
+        get => _benchNotes;
+        set => SetProperty(ref _benchNotes, value);
     }
 
     public AsyncRelayCommand ImportProfileCommand { get; }
     public RelayCommand BrowseProfileJsonCommand { get; }
+    public RelayCommand AutoFillFingerprintFromDeviceCommand { get; }
+    public AsyncRelayCommand PromoteSelectedProfileCommand { get; }
 
-    public DeviceProfilesViewModel(IDeviceProfileRepository repo)
+    public DeviceProfilesViewModel(IDeviceProfileRepository repo, IDeviceDiscoveryProvider discovery)
     {
         _repo = repo;
+        _discovery = discovery;
+
         BrowseProfileJsonCommand = new RelayCommand(() =>
         {
             var picked = UiInteractionBridge.PickOpenFile?.Invoke("Select Device Profile JSON", "JSON Files (*.json)|*.json|All Files (*.*)|*.*");
             if (!string.IsNullOrWhiteSpace(picked))
                 ImportJsonPath = picked;
         });
+
         ImportProfileCommand = new AsyncRelayCommand(
             async () =>
             {
@@ -519,6 +829,50 @@ public sealed class DeviceProfilesViewModel : PageViewModelBase
                 }
             },
             () => !string.IsNullOrWhiteSpace(ImportJsonPath));
+
+        AutoFillFingerprintFromDeviceCommand = new RelayCommand(() =>
+        {
+            var dev = _discovery.SelectedDevice;
+            if (dev?.BuildFingerprint.Value is { Length: > 0 } fp)
+            {
+                BenchTestedFingerprint = fp;
+                StatusBanner = $"Captured verified build fingerprint '{fp}' from connected device.";
+            }
+            else
+            {
+                StatusBanner = "Connect device via Authorized ADB first to auto-capture ro.build.fingerprint, or paste the verified fingerprint.";
+            }
+        });
+
+        PromoteSelectedProfileCommand = new AsyncRelayCommand(
+            async () =>
+            {
+                if (SelectedProfile is null) return;
+                try
+                {
+                    var promoted = SelectedProfile with
+                    {
+                        VerificationLevel = HardwareVerificationLevel.HardwareVerified,
+                        HardwareVerification = new HardwareVerificationRecord(
+                            IsHardwareVerified: true,
+                            TestedBy: BenchTesterName.Trim(),
+                            TestedAtUtc: DateTimeOffset.UtcNow,
+                            TestedBuildFingerprint: BenchTestedFingerprint.Trim(),
+                            VerificationNotes: BenchNotes.Trim())
+                    };
+                    var saved = await _repo.SaveOrPromoteProfileAsync(promoted).ConfigureAwait(true);
+                    RefreshProfilesList();
+                    SelectedProfile = FilteredProfiles.FirstOrDefault(p => p.ProfileId == saved.ProfileId);
+                    StatusBanner = $"Saved bench-verified profile '{saved.MarketingName}' ({saved.ProfileId}) to local profiles directory.";
+                }
+                catch (Exception ex)
+                {
+                    StatusBanner = $"Bench sign-off failed: {ex.Message}";
+                }
+            },
+            () => SelectedProfile is not null &&
+                  !string.IsNullOrWhiteSpace(BenchTesterName) &&
+                  !string.IsNullOrWhiteSpace(BenchTestedFingerprint));
 
         RefreshProfilesList();
     }
@@ -540,6 +894,6 @@ public sealed class DeviceProfilesViewModel : PageViewModelBase
             }
         }
         SelectedProfile ??= FilteredProfiles.FirstOrDefault();
-        StatusBanner = $"{FilteredProfiles.Count} profile(s) loaded. Note: Reference profiles are marked honestly as ReferenceSpecification until hardware bench-tested.";
+        StatusBanner = $"{FilteredProfiles.Count} profile(s) loaded. Reference profiles stay ReferenceSpecification until signed off with a physical bench fingerprint.";
     }
 }

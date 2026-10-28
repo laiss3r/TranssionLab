@@ -1,3 +1,4 @@
+using System.Globalization;
 using TranssionLab.Core.Enums;
 using TranssionLab.Core.Exceptions;
 using TranssionLab.Core.Interfaces;
@@ -27,9 +28,10 @@ public sealed class FastbootProvider : IFastbootProvider
         _logger = logger;
     }
 
-    private string FastbootPath => string.IsNullOrWhiteSpace(_settings.Current.FastbootExecutablePath)
-        ? "fastboot"
-        : _settings.Current.FastbootExecutablePath;
+    private string FastbootPath => PlatformToolLocator.ResolveToolExecutable(
+        _settings.Current.FastbootExecutablePath,
+        "fastboot",
+        _settings.Current.WorkspaceDataDirectory);
 
     public async Task<bool> IsToolAvailableAsync(CancellationToken ct = default)
     {
@@ -63,7 +65,6 @@ public sealed class FastbootProvider : IFastbootProvider
 
         foreach (var ep in initial)
         {
-            // Distinguish Bootloader Fastboot from Userspace Fastbootd via 'getvar is-userspace'
             var userspace = await GetVariableAsync(ep.Serial, "is-userspace", ct).ConfigureAwait(false);
             var actualMode = string.Equals(userspace, "yes", StringComparison.OrdinalIgnoreCase)
                 ? ConnectionMode.FastbootdUserspace
@@ -105,12 +106,10 @@ public sealed class FastbootProvider : IFastbootProvider
     public async Task<IReadOnlyDictionary<string, string>> GetAllVariablesAsync(string serial, CancellationToken ct = default)
     {
         var res = await _runner.RunAsync(FastbootPath, ["-s", serial, "getvar", "all"], TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
-        // Fastboot emits getvar lines on stderr!
         var combined = $"{res.StandardError}\n{res.StandardOutput}";
         var vars = ParseGetVarOutput(combined);
 
-        // Some Transsion MediaTek LK bootloaders do not implement 'getvar all' and require targeted queries
-        string[] fallbackKeys = ["product", "unlocked", "secure", "is-userspace", "current-slot", "max-download-size", "serialno", "version-bootloader"];
+        string[] fallbackKeys = ["product", "unlocked", "secure", "is-userspace", "current-slot", "max-download-size", "serialno", "version-bootloader", "super-partition-name"];
         foreach (var key in fallbackKeys)
         {
             if (!vars.ContainsKey(key))
@@ -280,6 +279,153 @@ public sealed class FastbootProvider : IFastbootProvider
         return res with { Succeeded = ok };
     }
 
+    public async Task<CommandExecutionResult> FlashVbmetaAsync(
+        string serial,
+        string partitionName,
+        string vbmetaImagePath,
+        bool disableVerity,
+        bool disableVerification,
+        CancellationToken ct = default)
+    {
+        if (!File.Exists(vbmetaImagePath))
+        {
+            throw new ServicingException("VBMETA_IMAGE_MISSING", $"vbmeta image does not exist: {vbmetaImagePath}");
+        }
+
+        var args = new List<string> { "-s", serial };
+        if (disableVerity) args.Add("--disable-verity");
+        if (disableVerification) args.Add("--disable-verification");
+        args.AddRange(["flash", partitionName, vbmetaImagePath]);
+
+        var res = await _runner.RunAsync(FastbootPath, args, TimeSpan.FromMinutes(2), ct).ConfigureAwait(false);
+        var combined = $"{res.StandardOutput}\n{res.StandardError}".Trim();
+        var ok = res.Succeeded && !combined.Contains("FAILED (", StringComparison.OrdinalIgnoreCase);
+
+        _logger.Log(new StructuredLogEntry
+        {
+            TimestampUtc = DateTimeOffset.UtcNow,
+            SessionId = _logger.CurrentSessionId,
+            SequenceNumber = 0,
+            Severity = ok ? LogSeverity.Info : LogSeverity.Error,
+            DeviceId = serial,
+            ProtocolProvider = ProviderName,
+            OperationId = "flash.fastboot_partition",
+            RequestedAction = $"fastboot {string.Join(' ', args.Select(a => a == vbmetaImagePath ? Path.GetFileName(a) : a))}",
+            CommandOutput = combined,
+            ErrorMessage = ok ? null : combined,
+            ExitCode = res.ExitCode,
+            DurationMs = res.DurationMs,
+            VerificationResult = ok ? "vbmeta flashed successfully" : "vbmeta flash failed"
+        });
+
+        return res with { Succeeded = ok };
+    }
+
+    public async Task<CommandExecutionResult> CreateLogicalPartitionAsync(
+        string serial,
+        string partitionName,
+        long sizeBytes,
+        CancellationToken ct = default)
+    {
+        var sizeStr = sizeBytes.ToString(CultureInfo.InvariantCulture);
+        var res = await _runner.RunAsync(
+            FastbootPath,
+            ["-s", serial, "create-logical-partition", partitionName, sizeStr],
+            TimeSpan.FromSeconds(30),
+            ct).ConfigureAwait(false);
+
+        return LogAndNormalizeFastbootMutation(
+            serial,
+            "partition.manage_logical_super",
+            $"fastboot -s {serial} create-logical-partition {partitionName} {sizeStr}",
+            res);
+    }
+
+    public async Task<CommandExecutionResult> ResizeLogicalPartitionAsync(
+        string serial,
+        string partitionName,
+        long newSizeBytes,
+        CancellationToken ct = default)
+    {
+        var sizeStr = newSizeBytes.ToString(CultureInfo.InvariantCulture);
+        var res = await _runner.RunAsync(
+            FastbootPath,
+            ["-s", serial, "resize-logical-partition", partitionName, sizeStr],
+            TimeSpan.FromSeconds(30),
+            ct).ConfigureAwait(false);
+
+        return LogAndNormalizeFastbootMutation(
+            serial,
+            "partition.manage_logical_super",
+            $"fastboot -s {serial} resize-logical-partition {partitionName} {sizeStr}",
+            res);
+    }
+
+    public async Task<CommandExecutionResult> DeleteLogicalPartitionAsync(
+        string serial,
+        string partitionName,
+        CancellationToken ct = default)
+    {
+        var res = await _runner.RunAsync(
+            FastbootPath,
+            ["-s", serial, "delete-logical-partition", partitionName],
+            TimeSpan.FromSeconds(30),
+            ct).ConfigureAwait(false);
+
+        return LogAndNormalizeFastbootMutation(
+            serial,
+            "partition.manage_logical_super",
+            $"fastboot -s {serial} delete-logical-partition {partitionName}",
+            res);
+    }
+
+    public async Task<CommandExecutionResult> ErasePartitionAsync(
+        string serial,
+        string partitionName,
+        CancellationToken ct = default)
+    {
+        var res = await _runner.RunAsync(
+            FastbootPath,
+            ["-s", serial, "erase", partitionName],
+            TimeSpan.FromMinutes(3),
+            ct).ConfigureAwait(false);
+
+        return LogAndNormalizeFastbootMutation(
+            serial,
+            "partition.erase_safe",
+            $"fastboot -s {serial} erase {partitionName}",
+            res);
+    }
+
+    private CommandExecutionResult LogAndNormalizeFastbootMutation(
+        string serial,
+        string operationId,
+        string actionDisplay,
+        CommandExecutionResult res)
+    {
+        var combined = $"{res.StandardOutput}\n{res.StandardError}".Trim();
+        var ok = res.Succeeded && !combined.Contains("FAILED (", StringComparison.OrdinalIgnoreCase);
+
+        _logger.Log(new StructuredLogEntry
+        {
+            TimestampUtc = DateTimeOffset.UtcNow,
+            SessionId = _logger.CurrentSessionId,
+            SequenceNumber = 0,
+            Severity = ok ? LogSeverity.Info : LogSeverity.Error,
+            DeviceId = serial,
+            ProtocolProvider = ProviderName,
+            OperationId = operationId,
+            RequestedAction = actionDisplay,
+            CommandOutput = combined,
+            ErrorMessage = ok ? null : combined,
+            ExitCode = res.ExitCode,
+            DurationMs = res.DurationMs,
+            VerificationResult = ok ? "OKAY received from fastboot target" : "Fastboot command rejected"
+        });
+
+        return res with { Succeeded = ok };
+    }
+
     public async Task<CommandExecutionResult> ExecuteVerifiedUnlockCommandAsync(string serial, bool useLegacyOemCommand, CancellationToken ct = default)
     {
         var args = useLegacyOemCommand
@@ -308,5 +454,44 @@ public sealed class FastbootProvider : IFastbootProvider
         });
 
         return res with { Succeeded = ok };
+    }
+
+    public async Task<CommandExecutionResult> BootTemporaryImageAsync(string serial, string bootImagePath, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serial);
+        if (!File.Exists(bootImagePath))
+        {
+            throw new ServicingException("BOOT_IMG_MISSING", $"Boot image does not exist: {bootImagePath}");
+        }
+
+        using (var fs = File.OpenRead(bootImagePath))
+        {
+            var hdr = new byte[8];
+            int n = await fs.ReadAsync(hdr, ct).ConfigureAwait(false);
+            var magic = n == 8 ? System.Text.Encoding.ASCII.GetString(hdr) : string.Empty;
+            if (magic is not ("ANDROID!" or "VNDRBOOT"))
+            {
+                throw new ServicingException("INVALID_BOOT_MAGIC", $"File '{Path.GetFileName(bootImagePath)}' is not a valid Android boot/recovery image (expected 'ANDROID!' or 'VNDRBOOT' header).");
+            }
+        }
+
+        var res = await _runner.RunAsync(FastbootPath, ["-s", serial, "boot", bootImagePath], TimeSpan.FromMinutes(2), ct).ConfigureAwait(false);
+        return LogAndNormalizeFastbootMutation(serial, "fastboot.temp_boot_image", $"fastboot -s {serial} boot {Path.GetFileName(bootImagePath)}", res);
+    }
+
+    public async Task<CommandExecutionResult> WipeUserdataAndMetadataAsync(string serial, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serial);
+        var wipeRes = await _runner.RunAsync(FastbootPath, ["-s", serial, "-w"], TimeSpan.FromMinutes(4), ct).ConfigureAwait(false);
+        var norm = LogAndNormalizeFastbootMutation(serial, "fastboot.factory_reset_userdata", $"fastboot -s {serial} -w", wipeRes);
+        if (norm.Succeeded)
+        {
+            return norm;
+        }
+
+        // Fallback for bootloaders that do not accept combined -w flag directly
+        var uRes = await ErasePartitionAsync(serial, "userdata", ct).ConfigureAwait(false);
+        await ErasePartitionAsync(serial, "metadata", ct).ConfigureAwait(false);
+        return uRes;
     }
 }

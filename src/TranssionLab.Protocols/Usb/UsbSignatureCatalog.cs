@@ -29,7 +29,8 @@ public static partial class UsbSignatureCatalog
         out ushort vid,
         out ushort pid,
         out int? mi,
-        out string? serialOrInstanceTail)
+        out string? serialOrInstanceTail,
+        string? friendlyName = null)
     {
         vid = 0;
         pid = 0;
@@ -40,36 +41,78 @@ public static partial class UsbSignatureCatalog
             return false;
 
         var m = VidPidMiRegex().Match(pnpDeviceId);
-        if (!m.Success)
-            return false;
-
-        vid = ushort.Parse(m.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        pid = ushort.Parse(m.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        if (m.Groups[3].Success)
+        if (m.Success)
         {
-            mi = int.Parse(m.Groups[3].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
-        }
-
-        var parts = pnpDeviceId.Split('\\');
-        if (parts.Length >= 3)
-        {
-            var tail = parts[^1];
-            // Composite parent suffixes on Windows contain '&' when OS-synthesized rather than hardware serial
-            if (!tail.Contains('&'))
+            vid = ushort.Parse(m.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            pid = ushort.Parse(m.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            if (m.Groups[3].Success)
             {
-                serialOrInstanceTail = tail;
+                mi = int.Parse(m.Groups[3].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
             }
+
+            var parts = pnpDeviceId.Split('\\');
+            if (parts.Length >= 3)
+            {
+                var tail = parts[^1];
+                // Composite parent suffixes on Windows contain '&' when OS-synthesized rather than hardware serial
+                if (!tail.Contains('&'))
+                {
+                    serialOrInstanceTail = tail;
+                }
+            }
+
+            return true;
         }
 
-        return true;
+        // Support Spreadtrum / Unisoc bus-enumerated child VCOM PDOs (e.g. SPRD_ENUM\SCI_DIAG\...)
+        // and virtual VCOM drivers whose DeviceId lacks VID_xxxx&PID_xxxx
+        var idUpper = pnpDeviceId.ToUpperInvariant();
+        var nameUpper = (friendlyName ?? string.Empty).ToUpperInvariant();
+        if (idUpper.StartsWith("SPRD", StringComparison.Ordinal) ||
+            nameUpper.Contains("SPRD") ||
+            nameUpper.Contains("SPREADTRUM") ||
+            nameUpper.Contains("UNISOC") ||
+            nameUpper.Contains("SCI USB2SERIAL") ||
+            nameUpper.Contains("U2S DIAG"))
+        {
+            vid = VidUnisoc;
+            pid = 0x4D00;
+            return true;
+        }
+
+        if (nameUpper.Contains("MEDIATEK") || nameUpper.Contains("PRELOADER") || nameUpper.Contains("MTK USB PORT"))
+        {
+            vid = VidMediaTek;
+            pid = nameUpper.Contains("MTK USB PORT") ? (ushort)0x0003 : (ushort)0x2000;
+            return true;
+        }
+
+        return false;
     }
 
     public static string? ExtractComPortFromName(string? friendlyName)
     {
         if (string.IsNullOrWhiteSpace(friendlyName))
             return null;
+
         var m = ComPortRegex().Match(friendlyName);
-        return m.Success ? m.Groups[1].Value.ToUpperInvariant() : null;
+        if (m.Success)
+        {
+            return m.Groups[1].Value.ToUpperInvariant();
+        }
+
+        const string winUsbTag = "[WINUSB:";
+        int idx = friendlyName.IndexOf(winUsbTag, StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            int close = friendlyName.IndexOf(']', idx);
+            if (close > idx + 1)
+            {
+                return friendlyName[(idx + 1)..close];
+            }
+        }
+
+        return null;
     }
 
     public static (ConnectionMode Mode, ChipsetVendor Chipset, string VendorLabel) ClassifyInterface(
@@ -79,6 +122,7 @@ public static partial class UsbSignatureCatalog
         string? friendlyName)
     {
         var nameUpper = (friendlyName ?? string.Empty).ToUpperInvariant();
+        bool hasVcomOrWinUsb = ExtractComPortFromName(friendlyName) is not null;
 
         // 1. MediaTek (0x0E8D)
         if (vid == VidMediaTek)
@@ -86,7 +130,7 @@ public static partial class UsbSignatureCatalog
             return pid switch
             {
                 0x0003 => (ConnectionMode.MediaTekBrom, ChipsetVendor.MediaTek, "MediaTek Inc. (Boot ROM)"),
-                0x2000 => (ConnectionMode.MediaTekPreloader, ChipsetVendor.MediaTek, "MediaTek Inc. (Preloader VCOM)"),
+                0x2000 or 0x20FF or 0x0006 or 0x6000 => (ConnectionMode.MediaTekPreloader, ChipsetVendor.MediaTek, "MediaTek Inc. (Preloader VCOM)"),
                 0x2001 => (ConnectionMode.MediaTekDownloadAgent, ChipsetVendor.MediaTek, "MediaTek Inc. (DA VCOM)"),
                 0x2006 or 0x2007 or 0x200A or 0x200D =>
                     nameUpper.Contains("ADB") && mi == 1
@@ -95,7 +139,9 @@ public static partial class UsbSignatureCatalog
                 0x201C => (ConnectionMode.FastbootBootloader, ChipsetVendor.MediaTek, "MediaTek Fastboot"),
                 _ when nameUpper.Contains("META") => (ConnectionMode.MediaTekMeta, ChipsetVendor.MediaTek, "MediaTek META Interface"),
                 _ when nameUpper.Contains("PRELOADER") => (ConnectionMode.MediaTekPreloader, ChipsetVendor.MediaTek, "MediaTek Preloader"),
+                _ when nameUpper.Contains("BROM") || nameUpper.Contains("MTK USB PORT") => (ConnectionMode.MediaTekBrom, ChipsetVendor.MediaTek, "MediaTek Boot ROM"),
                 _ when nameUpper.Contains("ELT") || nameUpper.Contains("DIAG") => (ConnectionMode.VendorDiag, ChipsetVendor.MediaTek, "MediaTek ELT Diagnostic"),
+                _ when hasVcomOrWinUsb => (ConnectionMode.MediaTekPreloader, ChipsetVendor.MediaTek, "MediaTek USB VCOM"),
                 _ => (ConnectionMode.CompositeUsb, ChipsetVendor.MediaTek, "MediaTek USB Device")
             };
         }
@@ -111,7 +157,10 @@ public static partial class UsbSignatureCatalog
                     mi == 1 || nameUpper.Contains("ADB")
                         ? (ConnectionMode.AdbAuthorized, ChipsetVendor.Unisoc, "Unisoc ADB Interface")
                         : (ConnectionMode.MtpOnly, ChipsetVendor.Unisoc, "Unisoc MTP / Composite"),
+                _ when nameUpper.Contains("U2S") || nameUpper.Contains("DOWNLOAD") || nameUpper.Contains("SCI USB2SERIAL") =>
+                    (ConnectionMode.UnisocDownload, ChipsetVendor.Unisoc, "Unisoc / Spreadtrum Download VCOM"),
                 _ when nameUpper.Contains("DIAG") || nameUpper.Contains("SPRD") => (ConnectionMode.UnisocDiag, ChipsetVendor.Unisoc, "Unisoc Diagnostic Port"),
+                _ when hasVcomOrWinUsb => (ConnectionMode.UnisocDownload, ChipsetVendor.Unisoc, "Unisoc USB VCOM"),
                 _ => (ConnectionMode.CompositeUsb, ChipsetVendor.Unisoc, "Unisoc USB Device")
             };
         }

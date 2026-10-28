@@ -41,6 +41,54 @@ public sealed class UsbInterfaceProvider : IUsbInterfaceProvider
         }
     }
 
+    public async Task<IReadOnlyList<DetectedUsbDevice>> EnumerateFastVcomDevicesAsync(CancellationToken ct = default)
+    {
+        var rawRecords = await _pnpBackend.QueryFastVcomEntitiesAsync(ct).ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow;
+        var fastList = new List<DetectedUsbDevice>(rawRecords.Count);
+
+        foreach (var raw in rawRecords)
+        {
+            if (!UsbSignatureCatalog.TryParsePnpDeviceId(raw.DeviceId, out var vid, out var pid, out var mi, out var serial, raw.Name))
+                continue;
+
+            if (!UsbSignatureCatalog.IsRelevantServicingDevice(vid, raw.Name))
+                continue;
+
+            var (mode, chipset, vendorLabel) = UsbSignatureCatalog.ClassifyInterface(vid, pid, mi, raw.Name);
+            var comPort = UsbSignatureCatalog.ExtractComPortFromName(raw.Name);
+            var driverDiag = UsbSignatureCatalog.EvaluateDriverHealth(raw.ConfigManagerErrorCode, raw.Service, raw.Manufacturer, mode);
+
+            var ifaceDesc = new UsbInterfaceDescriptor(
+                mi ?? 0,
+                raw.Service ?? "USB",
+                mode.ToString(),
+                comPort ?? "Bulk/Control",
+                raw.Name,
+                mode);
+
+            fastList.Add(new DetectedUsbDevice(
+                InstanceId: raw.DeviceId,
+                VendorId: vid,
+                ProductId: pid,
+                CompositeInterfaceNumber: mi,
+                SerialNumber: serial,
+                FriendlyName: raw.Name,
+                ManufacturerLabel: string.IsNullOrWhiteSpace(raw.Manufacturer) || raw.Manufacturer.StartsWith('(')
+                    ? vendorLabel
+                    : raw.Manufacturer,
+                AssociatedComPort: comPort,
+                ClassifiedMode: mode,
+                DetectedChipsetVendor: chipset,
+                Interfaces: [ifaceDesc],
+                DriverDiagnostics: driverDiag,
+                FirstSeenUtc: now,
+                LastSeenUtc: now));
+        }
+
+        return fastList;
+    }
+
     public async Task<IReadOnlyList<DetectedUsbDevice>> EnumerateUsbDevicesAsync(CancellationToken ct = default)
     {
         var rawRecords = await _pnpBackend.QueryUsbAndPortEntitiesAsync(ct).ConfigureAwait(false);
@@ -49,7 +97,7 @@ public sealed class UsbInterfaceProvider : IUsbInterfaceProvider
 
         foreach (var raw in rawRecords)
         {
-            if (!UsbSignatureCatalog.TryParsePnpDeviceId(raw.DeviceId, out var vid, out var pid, out var mi, out var serial))
+            if (!UsbSignatureCatalog.TryParsePnpDeviceId(raw.DeviceId, out var vid, out var pid, out var mi, out var serial, raw.Name))
                 continue;
 
             if (!UsbSignatureCatalog.IsRelevantServicingDevice(vid, raw.Name))

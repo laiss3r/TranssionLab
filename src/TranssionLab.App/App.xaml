@@ -4,11 +4,11 @@
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
-        <ResourceDictionary Source="Themes/FluentDarkTheme.xaml" />
-        <ResourceDictionary Source="Views/OverviewTemplates.xaml" />
-        <ResourceDictionary Source="Views/ProtocolTemplates.xaml" />
-        <ResourceDictionary Source="Views/FirmwareTemplates.xaml" />
-        <ResourceDictionary Source="Views/TelemetryTemplates.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Themes/FluentDarkTheme.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Views/OverviewTemplates.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Views/ProtocolTemplates.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Views/FirmwareTemplates.xaml" />
+        <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Views/TelemetryTemplates.xaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

@@ -2,15 +2,19 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:pages="clr-namespace:TranssionLab.ViewModels.Pages;assembly=TranssionLab.ViewModels">
 
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Themes/FluentDarkTheme.xaml" />
+  </ResourceDictionary.MergedDictionaries>
+
   <!-- PAGE 6: MEDIATEK TOOLS (Section 2B) -->
   <DataTemplate DataType="{x:Type pages:MediaTekToolsViewModel}">
     <StackPanel>
       <Border Style="{StaticResource FluentCardStyle}">
         <DockPanel>
-          <Button DockPanel.Dock="Right" Content="Scan MediaTek USB" Command="{Binding ScanMtkInterfacesCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+          <Button DockPanel.Dock="Right" Content="Scan MediaTek USB" Command="{Binding ScanMtkEndpointsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
           <StackPanel>
-            <TextBlock Text="MediaTek BROM / Preloader / DA Capability Inspector" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
-            <TextBlock Text="Distinguishes USB detection from active protocol communication. Performs documented read-only BROM sync (0xFD / 0xFC / 0xD8) to report SoC HW_CODE and SBC/SLA/DAA security configuration. Security bypasses are strictly excluded."
+            <TextBlock Text="MediaTek BROM / Preloader Catch &amp; Handshake" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
+            <TextBlock Text="Step 1: Click an operation below (Console logs instructions + 'Waiting for USB device...'). Step 2: Power OFF phone and plug USB cable — catches VCOM (0E8D) immediately, handshakes device, and stops battery charging."
                        Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" />
           </StackPanel>
         </DockPanel>
@@ -18,27 +22,43 @@
 
       <Border Style="{StaticResource FluentCardStyle}">
         <StackPanel>
+          <TextBlock Text="1-Click MediaTek VCOM Operations (Logs Instructions -&gt; Waiting for USB -&gt; Handshake)" Style="{StaticResource SectionHeadingStyle}" />
+          <WrapPanel Margin="0,0,0,12">
+            <Button Content="⚡ Catch &amp; Handshake BROM / Preloader (0xA0)"
+                    Command="{Binding ProbeHandshakeCommand}"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Margin="0,0,8,8" />
+            <Button Content="🧭 Boot Preloader to META Mode"
+                    Command="{Binding BootPreloaderToMetaCommand}"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Margin="0,0,8,8" />
+            <Button Content="🚀 Boot Preloader to Fastboot Mode"
+                    Command="{Binding BootPreloaderToFastbootCommand}"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Margin="0,0,8,8" />
+            <Button Content="🏭 Boot Preloader to Factory Mode"
+                    Command="{Binding BootPreloaderToFactoryCommand}"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Margin="0,0,8,8" />
+            <Button Content="🔓 Release Held VCOM"
+                    Command="{Binding ReleaseHeldMtkPortCommand}"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Margin="0,0,0,8" />
+          </WrapPanel>
+
+          <TextBlock Text="Optional Specific VCOM Port (Leave blank to auto-catch on USB plug-in)" Style="{StaticResource FieldLabelStyle}" />
+          <TextBox Width="220" HorizontalAlignment="Left" Text="{Binding SelectedComPort, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,12" />
+
           <TextBlock Text="Detected MediaTek USB Interfaces (VID 0x0E8D)" Style="{StaticResource SectionHeadingStyle}" />
-          <DataGrid ItemsSource="{Binding DetectedMtkEndpoints}" MaxHeight="190" Margin="0,0,0,12">
+          <DataGrid ItemsSource="{Binding DetectedMtkEndpoints}" MaxHeight="165" Margin="0,0,0,12">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="VID:PID" Binding="{Binding VidPidDisplay}" Width="160" />
+              <DataGridTextColumn Header="VID:PID" Binding="{Binding VidPidDisplay}" Width="140" />
               <DataGridTextColumn Header="Mode" Binding="{Binding ClassifiedMode}" Width="165" />
               <DataGridTextColumn Header="COM Port" Binding="{Binding AssociatedComPort}" Width="95" />
-              <DataGridTextColumn Header="Driver Health" Binding="{Binding DriverDiagnostics.Status}" Width="150" />
+              <DataGridTextColumn Header="Driver Health" Binding="{Binding DriverDiagnostics.Status}" Width="140" />
               <DataGridTextColumn Header="Interface Description" Binding="{Binding FriendlyName}" Width="*" />
             </DataGrid.Columns>
           </DataGrid>
-
-          <TextBlock Text="Target VCOM Port for Non-Destructive Read-Only BROM / Preloader Probe (e.g. COM5)" Style="{StaticResource FieldLabelStyle}" />
-          <Grid Margin="0,4,0,12">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="220" />
-              <ColumnDefinition Width="12" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding SelectedComPort, UpdateSourceTrigger=PropertyChanged}" />
-            <Button Grid.Column="2" Content="Run Read-Only BROM Security &amp; HW_CODE Probe" Command="{Binding ProbeReadOnlyBromCommand}" Style="{StaticResource PrimaryButtonStyle}" />
-          </Grid>
 
           <Border Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12"
                   Visibility="{Binding LastProbeResult, Converter={StaticResource NullToCollapsed}}">
@@ -61,35 +81,73 @@
   <!-- PAGE 7: DEDICATED META MODE PANEL (Section 2D) -->
   <DataTemplate DataType="{x:Type pages:MetaModeViewModel}">
     <StackPanel>
-      <Border Style="{StaticResource FluentCardStyle}">
+      <Border Style="{StaticResource FluentCardStyle}" BorderBrush="#F59E0B" BorderThickness="1.5">
         <DockPanel>
-          <Button DockPanel.Dock="Right" Content="Rescan META Interfaces" Command="{Binding ScanMetaEndpointsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+          <Button DockPanel.Dock="Right" Content="Rescan META USB" Command="{Binding RefreshMetaEndpointsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
           <StackPanel>
-            <TextBlock Text="MediaTek META Mode Connection &amp; Capability Panel" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
-            <TextBlock Text="{Binding ProviderInstallationStatus}" Foreground="{StaticResource WarningAmberBrush}" FontSize="12" TextWrapping="Wrap" />
+            <TextBlock Text="MediaTek META Mode — VCOM Boot &amp; Handshake" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
+            <TextBlock Text="1. Power OFF the device completely (unplug USB).  2. Click 'Boot Phone to META Mode &amp; Handshake' below.  3. Log shows 'Waiting for USB device...' — plug USB cable (no buttons) so Preloader VCOM is caught and handshaken into META Mode."
+                       Foreground="#FDE68A" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6" />
+            <TextBlock Text="{Binding ProviderInstallationStatus}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11.5" TextWrapping="Wrap" />
           </StackPanel>
         </DockPanel>
       </Border>
 
       <Border Style="{StaticResource FluentCardStyle}">
         <StackPanel>
+          <WrapPanel Margin="0,0,0,12">
+            <Button Content="🧭 Boot Phone to META Mode &amp; Handshake (Catch VCOM)"
+                    Command="{Binding BootPhoneToMetaModeCommand}"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Height="42"
+                    Padding="18,0"
+                    FontSize="13.5"
+                    FontWeight="Bold"
+                    Margin="0,0,10,6" />
+            <Button Content="Verify Selected / Connected META USB Session"
+                    Command="{Binding VerifyMetaSessionCommand}"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Height="42"
+                    Padding="14,0"
+                    Margin="0,0,0,6" />
+          </WrapPanel>
+
           <TextBlock Text="Recognized META USB Endpoints" Style="{StaticResource SectionHeadingStyle}" />
-          <DataGrid ItemsSource="{Binding DetectedMetaEndpoints}" SelectedItem="{Binding SelectedMetaEndpoint}" MaxHeight="200" Margin="0,0,0,12">
+          <DataGrid ItemsSource="{Binding DetectedMetaEndpoints}" SelectedItem="{Binding SelectedMetaEndpoint}" MaxHeight="170" Margin="0,0,0,12">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Classification" Binding="{Binding InterfaceClassification}" Width="300" />
+              <DataGridTextColumn Header="Classification" Binding="{Binding InterfaceClassification}" Width="260" />
               <DataGridTextColumn Header="META DLL Present" Binding="{Binding ExternalCommunicationProviderAvailable}" Width="135" />
-              <DataGridTextColumn Header="Reported State" Binding="{Binding ReportedState}" Width="175" />
+              <DataGridTextColumn Header="Reported State" Binding="{Binding ReportedState}" Width="155" />
               <DataGridTextColumn Header="USB Friendly Name" Binding="{Binding UsbDevice.FriendlyName}" Width="*" />
             </DataGrid.Columns>
           </DataGrid>
 
-          <Button Content="Verify Selected META Interface &amp; Log Prerequisites" Command="{Binding VerifyMetaSessionCommand}" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Left" Margin="0,0,0,12" />
-
-          <Border Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12"
+          <Border Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10"
                   Visibility="{Binding LastDiagnostic, Converter={StaticResource NullToCollapsed}}">
             <StackPanel DataContext="{Binding LastDiagnostic}">
-              <TextBlock Text="{Binding State}" Foreground="{StaticResource AccentCyanBrush}" FontWeight="Bold" Margin="0,0,0,4" />
+              <TextBlock Foreground="{StaticResource AccentCyanBrush}" FontWeight="Bold" Margin="0,0,0,4">
+                State: <Run Text="{Binding State, Mode=OneWay}" /> | Session Established: <Run Text="{Binding SessionEstablished, Mode=OneWay}" />
+              </TextBlock>
               <TextBlock Text="{Binding DiagnosticSummary}" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+
+          <!-- Read-Only Modem / AT Baseband Inquiry -->
+          <Border Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
+            <StackPanel>
+              <TextBlock Text="Read-Only Modem / AT Baseband Inquiry (ATI / AT+CGMI / AT+CGMM / AT+CGMR — Zero NVRAM Writes)" Style="{StaticResource FieldLabelStyle}" Foreground="{StaticResource AccentCyanBrush}" />
+              <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="200" />
+                  <ColumnDefinition Width="10" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="12" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding SelectedAtComPort, UpdateSourceTrigger=PropertyChanged}" ToolTip="Modem/AT COM port (e.g. COM38, or leave blank to auto-detect)" />
+                <Button Grid.Column="2" Content="📡 Read Modem / Baseband Info (AT)" Command="{Binding QueryReadOnlyAtModemCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                <TextBlock Grid.Column="4" Text="{Binding LastAtModemResult.RawSummary, Mode=OneWay}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="11.5" />
+              </Grid>
             </StackPanel>
           </Border>
         </StackPanel>
@@ -104,8 +162,8 @@
         <DockPanel>
           <Button DockPanel.Dock="Right" Content="Scan Unisoc USB" Command="{Binding ScanUnisocEndpointsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
           <StackPanel>
-            <TextBlock Text="Spreadtrum / Unisoc Download &amp; PAC Servicing Provider" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
-            <TextBlock Text="Dedicated Unisoc VID 0x1782 provider (never conflated with MediaTek DA). Implements HDLC 0x7E framing, CRC-16 XMODEM verification, and non-destructive BSL_REP_VER (0x81) boot banner inspection."
+            <TextBlock Text="Spreadtrum / Unisoc VCOM Download Catch &amp; Handshake" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
+            <TextBlock Text="Step 1: Click 'Catch &amp; Handshake Unisoc VCOM' below (Console logs instructions + 'Waiting for USB device...'). Step 2: Power OFF phone, hold Vol- (or Vol+ &amp; Vol-), and plug USB cable to catch 1782:4D00 VCOM and handshake BSL_REP_VER."
                        Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" />
           </StackPanel>
         </DockPanel>
@@ -113,33 +171,40 @@
 
       <Border Style="{StaticResource FluentCardStyle}">
         <StackPanel>
+          <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="10" />
+              <ColumnDefinition Width="190" />
+              <ColumnDefinition Width="10" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0"
+                    Content="📡 Catch &amp; Handshake Unisoc VCOM (HDLC 0x7E)"
+                    Command="{Binding ProbeDownloadBannerCommand}"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Height="40"
+                    Padding="16,0" />
+            <TextBox Grid.Column="2" Text="{Binding SelectedComPort, UpdateSourceTrigger=PropertyChanged}" ToolTip="Optional specific COM port (leave blank to auto-catch on USB plug-in)" />
+            <Button Grid.Column="4" Content="🔓 Release Held VCOM" Command="{Binding ReleaseHeldUnisocPortCommand}" Style="{StaticResource SecondaryButtonStyle}" Height="40" />
+          </Grid>
+
           <TextBlock Text="Detected Unisoc / Spreadtrum USB Endpoints (VID 0x1782)" Style="{StaticResource SectionHeadingStyle}" />
-          <DataGrid ItemsSource="{Binding DetectedUnisocEndpoints}" MaxHeight="190" Margin="0,0,0,12">
+          <DataGrid ItemsSource="{Binding DetectedUnisocEndpoints}" MaxHeight="175" Margin="0,0,0,12">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="VID:PID" Binding="{Binding VidPidDisplay}" Width="160" />
+              <DataGridTextColumn Header="VID:PID" Binding="{Binding VidPidDisplay}" Width="140" />
               <DataGridTextColumn Header="Mode" Binding="{Binding ClassifiedMode}" Width="160" />
               <DataGridTextColumn Header="COM Port" Binding="{Binding AssociatedComPort}" Width="95" />
-              <DataGridTextColumn Header="Driver Status" Binding="{Binding DriverDiagnostics.Status}" Width="150" />
+              <DataGridTextColumn Header="Driver Status" Binding="{Binding DriverDiagnostics.Status}" Width="145" />
               <DataGridTextColumn Header="Description" Binding="{Binding FriendlyName}" Width="*" />
             </DataGrid.Columns>
           </DataGrid>
-
-          <TextBlock Text="SCI USB2Serial COM Port for Read-Only HDLC 0x7E Boot Version Probe" Style="{StaticResource FieldLabelStyle}" />
-          <Grid Margin="0,4,0,12">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="220" />
-              <ColumnDefinition Width="12" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding SelectedComPort, UpdateSourceTrigger=PropertyChanged}" />
-            <Button Grid.Column="2" Content="Probe Unisoc Boot ROM Banner (BSL_REP_VER)" Command="{Binding ProbeDownloadBannerCommand}" Style="{StaticResource PrimaryButtonStyle}" />
-          </Grid>
 
           <Border Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12"
                   Visibility="{Binding LastProbeResult, Converter={StaticResource NullToCollapsed}}">
             <StackPanel DataContext="{Binding LastProbeResult}">
               <TextBlock Foreground="{StaticResource AccentCyanBrush}" FontWeight="Bold" Margin="0,0,0,4">
-                Boot Banner: <Run Text="{Binding BootRomBannerVersion, Mode=OneWay}" /> | State: <Run Text="{Binding ResultingState, Mode=OneWay}" />
+                Boot Banner: <Run Text="{Binding BootRomBannerVersion, Mode=OneWay}" /> | Held Active: <Run Text="{Binding PortHeldActive, Mode=OneWay}" />
               </TextBlock>
               <TextBlock Text="{Binding DiagnosticMessage}" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" />
             </StackPanel>
@@ -214,31 +279,29 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
 
-          <TextBlock Text="Mandatory Factory Reset &amp; Security Warnings" Style="{StaticResource FieldLabelStyle}" />
-          <ItemsControl ItemsSource="{Binding DestructiveWarnings}" Margin="0,0,0,10">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <TextBlock Text="{Binding}" Foreground="{StaticResource WarningAmberBrush}" Margin="0,2" TextWrapping="Wrap" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+          <Border Background="#2D1519" BorderBrush="{StaticResource DangerRedBrush}" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+            <ItemsControl ItemsSource="{Binding DestructiveWarnings}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding}" Foreground="#FECACA" FontSize="12" TextWrapping="Wrap" Margin="0,1" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
         </StackPanel>
       </Border>
 
-      <Border Style="{StaticResource FluentCardStyle}" Visibility="{Binding CurrentAssessment, Converter={StaticResource NullToCollapsed}}">
+      <Border Style="{StaticResource FluentCardStyle}">
         <StackPanel>
-          <TextBlock Text="Explicit Destructive Unlock Confirmation Gate" Style="{StaticResource SectionHeadingStyle}" />
-          <TextBlock Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,6">
-            Type exact confirmation phrase: <Run Text="{Binding CurrentAssessment.ExpectedConfirmationPhrase, Mode=OneWay}" Foreground="{StaticResource WarningAmberBrush}" FontFamily="{StaticResource MonoFont}" FontWeight="Bold" />
-          </TextBlock>
-          <Grid>
+          <TextBlock Text="Official Unlock Confirmation Phrase" Style="{StaticResource FieldLabelStyle}" />
+          <Grid Margin="0,4,0,0">
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="340" />
+              <ColumnDefinition Width="320" />
               <ColumnDefinition Width="12" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding ConfirmationInput, UpdateSourceTrigger=PropertyChanged}" FontFamily="{StaticResource MonoFont}" />
-            <Button Grid.Column="2" Content="Execute Official Unlock &amp; Verify State" Command="{Binding ExecuteOfficialUnlockCommand}" Style="{StaticResource DangerButtonStyle}" />
+            <TextBox Grid.Column="0" Text="{Binding ConfirmationInput, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Grid.Column="2" Content="Execute Verified Official Fastboot Unlock" Command="{Binding ExecuteOfficialUnlockCommand}" Style="{StaticResource DangerButtonStyle}" />
           </Grid>
         </StackPanel>
       </Border>

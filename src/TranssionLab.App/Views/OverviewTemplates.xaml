@@ -2,148 +2,459 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:pages="clr-namespace:TranssionLab.ViewModels.Pages;assembly=TranssionLab.ViewModels">
 
-  <!-- PAGE 1: UNIFIED CONNECTION DASHBOARD (Section 3) -->
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Themes/FluentDarkTheme.xaml" />
+  </ResourceDictionary.MergedDictionaries>
+
+  <!-- PAGE 1: OUMSEGSM-REFERENCED HOME LAUNCHER & DEDICATED READ INFO HUB -->
   <DataTemplate DataType="{x:Type pages:DashboardViewModel}">
     <StackPanel>
-      <Border Style="{StaticResource FluentCardStyle}">
-        <DockPanel>
-          <Button DockPanel.Dock="Right" Content="Scan Transports" Command="{Binding RefreshDashboardCommand}" Style="{StaticResource PrimaryButtonStyle}" />
-          <StackPanel>
-            <TextBlock Text="Unified Device Connection Dashboard" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
-            <TextBlock Text="Distinguishes DETECTED, INFERRED, and VERIFIED device attributes. Exact models are never inferred from chipset alone."
-                       Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" />
-          </StackPanel>
-        </DockPanel>
-      </Border>
 
-      <!-- Empty / Multi-Device Warning State -->
-      <Border Style="{StaticResource FluentCardStyle}" Visibility="{Binding HasActiveDevice, Converter={StaticResource InvBoolToVis}}">
-        <StackPanel HorizontalAlignment="Center" Margin="20">
-          <TextBlock Text="◈" FontSize="32" Foreground="{StaticResource AccentCyanBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
-          <TextBlock Text="{Binding EmptyStateMessage}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="13.5" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="620" />
+      <!-- ========================================================================= -->
+      <!-- SECTION A: HOME LAUNCHER GRID (TECNO / INFINIX / ITEL + MTK / SPD / ADB)  -->
+      <!-- ========================================================================= -->
+      <StackPanel Visibility="{Binding IsHomeCardsVisible, Converter={StaticResource BoolToVis}}">
+
+        <!-- Top Mini Selection Header -->
+        <DockPanel Margin="2,0,2,10">
+          <Button DockPanel.Dock="Right"
+                  Content="Reset to All Brands"
+                  Command="{Binding SelectBrandCommand}"
+                  CommandParameter="ALL"
+                  Style="{StaticResource SecondaryButtonStyle}"
+                  Padding="10,4"
+                  FontSize="11" />
+          <TextBlock Text="{Binding ConnectionGuidanceHeadline}"
+                     Foreground="#93C5FD"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+
+        <!-- ROW 1: 3 BOLD COLOR-CODED BRAND CARDS (OumseGsm Home Reference) -->
+        <UniformGrid Columns="3" Margin="0,0,0,12">
+          <!-- TECNO (Royal Blue) -->
+          <Button Command="{Binding SelectBrandCommand}"
+                  CommandParameter="TECNO"
+                  Height="92"
+                  Margin="0,0,10,0"
+                  Cursor="Hand">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="CardBd" CornerRadius="10" BorderBrush="#60A5FA" BorderThickness="1.5" Padding="14,12">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                      <GradientStop Color="#2563EB" Offset="0" />
+                      <GradientStop Color="#1E3A8A" Offset="1" />
+                    </LinearGradientBrush>
+                  </Border.Background>
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="TECNO" FontSize="24" FontWeight="ExtraBold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                    <TextBlock Text="Camon • Spark • Pova • Pop" FontSize="11" Foreground="#DBEAFE" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                  </StackPanel>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="CardBd" Property="BorderBrush" Value="#FFFFFF" />
+                    <Setter TargetName="CardBd" Property="BorderThickness" Value="2.5" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+          </Button>
+
+          <!-- Infinix (Emerald Green) -->
+          <Button Command="{Binding SelectBrandCommand}"
+                  CommandParameter="INFINIX"
+                  Height="92"
+                  Margin="5,0,5,0"
+                  Cursor="Hand">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="CardBd" CornerRadius="10" BorderBrush="#4ADE80" BorderThickness="1.5" Padding="14,12">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                      <GradientStop Color="#16A34A" Offset="0" />
+                      <GradientStop Color="#14532D" Offset="1" />
+                    </LinearGradientBrush>
+                  </Border.Background>
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="Infinix" FontSize="24" FontWeight="ExtraBold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                    <TextBlock Text="Note • Hot • Zero • GT • Smart" FontSize="11" Foreground="#DCFCE7" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                  </StackPanel>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="CardBd" Property="BorderBrush" Value="#FFFFFF" />
+                    <Setter TargetName="CardBd" Property="BorderThickness" Value="2.5" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+          </Button>
+
+          <!-- itel (Crimson Red) -->
+          <Button Command="{Binding SelectBrandCommand}"
+                  CommandParameter="ITEL"
+                  Height="92"
+                  Margin="10,0,0,0"
+                  Cursor="Hand">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="CardBd" CornerRadius="10" BorderBrush="#F87171" BorderThickness="1.5" Padding="14,12">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                      <GradientStop Color="#DC2626" Offset="0" />
+                      <GradientStop Color="#7F1D1D" Offset="1" />
+                    </LinearGradientBrush>
+                  </Border.Background>
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="itel" FontSize="25" FontWeight="ExtraBold" FontStyle="Italic" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                    <TextBlock Text="P55 • S24 • A70 • Vision" FontSize="11" Foreground="#FEE2E2" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                  </StackPanel>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="CardBd" Property="BorderBrush" Value="#FFFFFF" />
+                    <Setter TargetName="CardBd" Property="BorderThickness" Value="2.5" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+          </Button>
+        </UniformGrid>
+
+        <!-- ROW 2: 4 ICONIC PLATFORM CARDS (MTK • META • SPD • ADB — 1-Click Catch & Handshake!) -->
+        <UniformGrid Columns="4" Margin="0,0,0,14">
+          <!-- MTK CHIP CARD -->
+          <Button Command="{Binding LaunchPlatformReadCommand}"
+                  CommandParameter="MediaTekVcom"
+                  Height="108"
+                  Margin="0,0,6,0"
+                  Cursor="Hand">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="PlatBd" Background="#0F1B2E" CornerRadius="10" BorderBrush="#0EA5E9" BorderThickness="1.5" Padding="10,10">
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <!-- Embedded Cyan CPU Microchip Vector Icon -->
+                    <Canvas Width="36" Height="36" HorizontalAlignment="Center" Margin="0,0,0,6">
+                      <Rectangle Canvas.Left="7" Canvas.Top="7" Width="22" Height="22" RadiusX="4" RadiusY="4" Stroke="#38BDF8" StrokeThickness="2" Fill="#082F49" />
+                      <Rectangle Canvas.Left="13" Canvas.Top="13" Width="10" Height="10" Fill="#38BDF8" />
+                      <Line X1="12" Y1="1" X2="12" Y2="7" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="18" Y1="1" X2="18" Y2="7" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="24" Y1="1" X2="24" Y2="7" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="12" Y1="29" X2="12" Y2="35" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="18" Y1="29" X2="18" Y2="35" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="24" Y1="29" X2="24" Y2="35" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="1" Y1="12" X2="7" Y2="12" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="1" Y1="18" X2="7" Y2="18" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="1" Y1="24" X2="7" Y2="24" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="29" Y1="12" X2="35" Y2="12" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="29" Y1="18" X2="35" Y2="18" Stroke="#38BDF8" StrokeThickness="2" />
+                      <Line X1="29" Y1="24" X2="35" Y2="24" Stroke="#38BDF8" StrokeThickness="2" />
+                    </Canvas>
+                    <TextBlock Text="MTK" FontSize="17" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                    <TextBlock Text="BROM / Preloader VCOM" FontSize="10" Foreground="#7DD3FC" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="PlatBd" Property="Background" Value="#162844" />
+                    <Setter TargetName="PlatBd" Property="BorderBrush" Value="#7DD3FC" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+          </Button>
+
+          <!-- META MODE CARD -->
+          <Button Command="{Binding LaunchMetaBootFromHomeCommand}"
+                  Height="108"
+                  Margin="4,0,4,0"
+                  Cursor="Hand">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="PlatBd" Background="#271B0A" CornerRadius="10" BorderBrush="#F59E0B" BorderThickness="1.5" Padding="10,10">
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <!-- Embedded Amber Compass / META Vector Icon -->
+                    <Canvas Width="36" Height="36" HorizontalAlignment="Center" Margin="0,0,0,6">
+                      <Ellipse Canvas.Left="3" Canvas.Top="3" Width="30" Height="30" Stroke="#FBBF24" StrokeThickness="2" Fill="#451A03" />
+                      <Polygon Points="18,8 23,18 18,28 13,18" Fill="#FBBF24" />
+                      <Ellipse Canvas.Left="15.5" Canvas.Top="15.5" Width="5" Height="5" Fill="#451A03" />
+                    </Canvas>
+                    <TextBlock Text="META" FontSize="17" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                    <TextBlock Text="Boot &amp; Handshake META" FontSize="10" Foreground="#FDE68A" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="PlatBd" Property="Background" Value="#3B270C" />
+                    <Setter TargetName="PlatBd" Property="BorderBrush" Value="#FDE68A" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+          </Button>
+
+          <!-- SPD / UNISOC CHIP CARD -->
+          <Button Command="{Binding LaunchPlatformReadCommand}"
+                  CommandParameter="UnisocVcom"
+                  Height="108"
+                  Margin="4,0,4,0"
+                  Cursor="Hand">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="PlatBd" Background="#1A132F" CornerRadius="10" BorderBrush="#8B5CF6" BorderThickness="1.5" Padding="10,10">
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <!-- Embedded Purple CPU Microchip Vector Icon -->
+                    <Canvas Width="36" Height="36" HorizontalAlignment="Center" Margin="0,0,0,6">
+                      <Rectangle Canvas.Left="7" Canvas.Top="7" Width="22" Height="22" RadiusX="4" RadiusY="4" Stroke="#C084FC" StrokeThickness="2" Fill="#2E1065" />
+                      <Rectangle Canvas.Left="13" Canvas.Top="13" Width="10" Height="10" Fill="#C084FC" />
+                      <Line X1="12" Y1="1" X2="12" Y2="7" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="18" Y1="1" X2="18" Y2="7" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="24" Y1="1" X2="24" Y2="7" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="12" Y1="29" X2="12" Y2="35" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="18" Y1="29" X2="18" Y2="35" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="24" Y1="29" X2="24" Y2="35" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="1" Y1="12" X2="7" Y2="12" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="1" Y1="18" X2="7" Y2="18" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="1" Y1="24" X2="7" Y2="24" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="29" Y1="12" X2="35" Y2="12" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="29" Y1="18" X2="35" Y2="18" Stroke="#C084FC" StrokeThickness="2" />
+                      <Line X1="29" Y1="24" X2="35" Y2="24" Stroke="#C084FC" StrokeThickness="2" />
+                    </Canvas>
+                    <TextBlock Text="SPD" FontSize="17" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                    <TextBlock Text="Read Unisoc U2S VCOM" FontSize="10" Foreground="#DDD6FE" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="PlatBd" Property="Background" Value="#261C45" />
+                    <Setter TargetName="PlatBd" Property="BorderBrush" Value="#DDD6FE" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+          </Button>
+
+          <!-- ADB / FASTBOOT ANDROID CARD -->
+          <Button Command="{Binding LaunchPlatformReadCommand}"
+                  CommandParameter="AdbAndFastboot"
+                  Height="108"
+                  Margin="6,0,0,0"
+                  Cursor="Hand">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="PlatBd" Background="#0D231C" CornerRadius="10" BorderBrush="#10B981" BorderThickness="1.5" Padding="10,10">
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <!-- Embedded Green Android Vector Icon -->
+                    <Canvas Width="36" Height="36" HorizontalAlignment="Center" Margin="0,0,0,6">
+                      <Line X1="12" Y1="4" X2="15" Y2="9" Stroke="#4ADE80" StrokeThickness="2" />
+                      <Line X1="24" Y1="4" X2="21" Y2="9" Stroke="#4ADE80" StrokeThickness="2" />
+                      <Rectangle Canvas.Left="9" Canvas.Top="9" Width="18" Height="10" RadiusX="5" RadiusY="5" Fill="#4ADE80" />
+                      <Ellipse Canvas.Left="13" Canvas.Top="12" Width="2.5" Height="2.5" Fill="#0D231C" />
+                      <Ellipse Canvas.Left="20.5" Canvas.Top="12" Width="2.5" Height="2.5" Fill="#0D231C" />
+                      <Rectangle Canvas.Left="9" Canvas.Top="20" Width="18" Height="12" RadiusX="2" RadiusY="2" Fill="#4ADE80" />
+                      <Rectangle Canvas.Left="5" Canvas.Top="20" Width="3" Height="9" RadiusX="1.5" RadiusY="1.5" Fill="#4ADE80" />
+                      <Rectangle Canvas.Left="28" Canvas.Top="20" Width="3" Height="9" RadiusX="1.5" RadiusY="1.5" Fill="#4ADE80" />
+                    </Canvas>
+                    <TextBlock Text="ADB" FontSize="17" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                    <TextBlock Text="ADB &amp; Fastboot Read" FontSize="10" Foreground="#A7F3D0" HorizontalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="PlatBd" Property="Background" Value="#13352A" />
+                    <Setter TargetName="PlatBd" Property="BorderBrush" Value="#6EE7B7" />
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+          </Button>
+        </UniformGrid>
+
+        <!-- ROW 3: GIANT 1-CLICK AUTO-READ BUTTON + QUICK TOOLS -->
+        <Border Style="{StaticResource FluentCardStyle}" BorderBrush="#10B981" BorderThickness="1.5" Padding="14">
+          <StackPanel>
+            <Grid Margin="0,0,0,10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="125" />
+              </Grid.ColumnDefinitions>
+              <Button Grid.Column="0"
+                      Content="📱 READ PHONE INFO — AUTO-CATCH VCOM / ADB / FASTBOOT"
+                      Command="{Binding LaunchPlatformReadCommand}"
+                      CommandParameter="AutoDetectAll"
+                      Style="{StaticResource PrimaryButtonStyle}"
+                      Background="#059669"
+                      BorderBrush="#34D399"
+                      FontSize="14"
+                      Height="46" />
+              <Button Grid.Column="2"
+                      Content="⛔ STOP"
+                      Command="{Binding StopQuickReadCommand}"
+                      Style="{StaticResource DangerButtonStyle}"
+                      FontSize="13"
+                      Height="46" />
+            </Grid>
+
+            <UniformGrid Columns="4">
+              <Button Content="🗂 Partitions" Command="{Binding QuickNavigateCommand}" CommandParameter="13" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" Padding="10,7" />
+              <Button Content="📦 Unpack Firmware" Command="{Binding QuickNavigateCommand}" CommandParameter="11" Style="{StaticResource SecondaryButtonStyle}" Margin="3,0,3,0" Padding="10,7" />
+              <Button Content="🔥 Safe Flasher" Command="{Binding QuickNavigateCommand}" CommandParameter="14" Style="{StaticResource SecondaryButtonStyle}" Margin="3,0,3,0" Padding="10,7" />
+              <Button Content="⇄ USB &amp; Drivers" Command="{Binding QuickNavigateCommand}" CommandParameter="2" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0" Padding="10,7" />
+            </UniformGrid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <!-- ========================================================================= -->
+      <!-- SECTION B: DEDICATED READ INFO WORKSTATION (Sidebar Item #2: Read Info)   -->
+      <!-- ========================================================================= -->
+      <Border Style="{StaticResource FluentCardStyle}"
+              BorderBrush="#10B981"
+              BorderThickness="1.5"
+              Visibility="{Binding IsReadInfoFocusMode, Converter={StaticResource BoolToVis}}">
+        <StackPanel>
+          <TextBlock Text="Read Phone Info — 125 Hz VCOM / WinUSB Catch-and-Hold + ADB / Fastboot" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,8" />
+
+          <!-- Transport Filter Pills -->
+          <UniformGrid Columns="4" Margin="0,0,0,10">
+            <Button Content="⚡ Auto-Detect All" Command="{Binding SelectTransportCommand}" CommandParameter="AutoDetectAll" Style="{StaticResource PrimaryButtonStyle}" Background="#0369A1" BorderBrush="#38BDF8" Margin="0,0,6,0" Padding="8,7" />
+            <Button Content="🔧 MTK VCOM / BROM" Command="{Binding SelectTransportCommand}" CommandParameter="MediaTekVcom" Style="{StaticResource PrimaryButtonStyle}" Background="#0F766E" BorderBrush="#2DD4BF" Margin="3,0,3,0" Padding="8,7" />
+            <Button Content="📡 SPD / Unisoc VCOM" Command="{Binding SelectTransportCommand}" CommandParameter="UnisocVcom" Style="{StaticResource PrimaryButtonStyle}" Background="#6D28D9" BorderBrush="#A78BFA" Margin="3,0,3,0" Padding="8,7" />
+            <Button Content="🤖 ADB &amp; Fastboot" Command="{Binding SelectTransportCommand}" CommandParameter="AdbAndFastboot" Style="{StaticResource PrimaryButtonStyle}" Background="#1E40AF" BorderBrush="#60A5FA" Margin="6,0,0,0" Padding="8,7" />
+          </UniformGrid>
+
+          <!-- Giant Start / Stop & Release Bar -->
+          <Grid Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="10" />
+              <ColumnDefinition Width="180" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0"
+                    Content="▶ START READ PHONE INFO (125 Hz CATCH &amp; HOLD)"
+                    Command="{Binding ReadPhoneInfoCommand}"
+                    Style="{StaticResource PrimaryButtonStyle}"
+                    Background="#059669"
+                    BorderBrush="#34D399"
+                    FontSize="14"
+                    Height="46" />
+            <Button Grid.Column="2"
+                    Content="⛔ STOP / RELEASE"
+                    Command="{Binding StopQuickReadCommand}"
+                    Style="{StaticResource DangerButtonStyle}"
+                    FontSize="12.5"
+                    Height="46" />
+          </Grid>
+
+          <!-- Simple 3-Step Visual Guide -->
+          <Border Background="#0B1322" CornerRadius="6" Padding="12,9" BorderBrush="#1E293B" BorderThickness="1">
+            <StackPanel>
+              <TextBlock Text="• Powered-OFF Phone (MTK / SPD VCOM): Click 'START READ PHONE INFO', power OFF the phone completely, hold Vol- (or Vol+ &amp; Vol-) if needed, and plug USB. TranssionLab opens COMx in &lt;10ms and holds VCOM active so it does NOT enter battery charging."
+                         Foreground="#E2E8F0" FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,4" />
+              <TextBlock Text="• Powered-ON Phone (ADB / Fastboot): Plug USB with Developer Options -> USB Debugging ON (tap Allow on phone screen) or in Fastboot mode."
+                         Foreground="#94A3B8" FontSize="11.5" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Border>
 
-      <!-- Active Device Identity & Provenance Grid -->
+      <!-- ========================================================================= -->
+      <!-- SECTION C: CAPTURED PHONE IDENTITY & HARDWARE REPORT CARD                 -->
+      <!-- ========================================================================= -->
+      <Border Style="{StaticResource FluentCardStyle}"
+              BorderBrush="#38BDF8"
+              BorderThickness="1.5"
+              Visibility="{Binding HasQuickReadReport, Converter={StaticResource BoolToVis}}">
+        <StackPanel>
+          <DockPanel Margin="0,0,0,10">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Button Content="📋 Copy Report" Command="{Binding CopyQuickReadReportCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="10,4" FontSize="11.5" Margin="0,0,8,0" />
+              <Border Background="#0369A1" CornerRadius="4" Padding="10,4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding LastQuickReadReport.DetectedProtocolLabel}" Foreground="#FFFFFF" FontWeight="Bold" FontSize="11.5" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="✓ Captured Phone Hardware &amp; Software Report" Style="{StaticResource SectionHeadingStyle}" Foreground="#34D399" Margin="0" VerticalAlignment="Center" />
+          </DockPanel>
+
+          <UniformGrid Columns="3" Margin="0,0,0,10">
+            <StackPanel Margin="0,0,12,8">
+              <TextBlock Text="Endpoint / Serial" Style="{StaticResource FieldLabelStyle}" />
+              <TextBlock Text="{Binding LastQuickReadReport.PortOrSerial}" Foreground="{StaticResource AccentCyanBrush}" FontFamily="{StaticResource MonoFont}" FontWeight="Bold" FontSize="13.5" />
+            </StackPanel>
+            <StackPanel Margin="0,0,12,8">
+              <TextBlock Text="Model &amp; Provenance" Style="{StaticResource FieldLabelStyle}" />
+              <TextBlock Text="{Binding LastQuickReadReport.ModelSummary}" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Margin="0,0,12,8">
+              <TextBlock Text="Chipset / SoC" Style="{StaticResource FieldLabelStyle}" />
+              <TextBlock Text="{Binding LastQuickReadReport.ChipsetSummary}" Foreground="#FDE68A" FontWeight="SemiBold" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Margin="0,0,12,8">
+              <TextBlock Text="Android / Boot Stage" Style="{StaticResource FieldLabelStyle}" />
+              <TextBlock Text="{Binding LastQuickReadReport.AndroidOrBootVersion}" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Margin="0,0,12,8">
+              <TextBlock Text="Security &amp; Lock State" Style="{StaticResource FieldLabelStyle}" />
+              <TextBlock Text="{Binding LastQuickReadReport.SecurityAndLockSummary}" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Margin="0,0,12,8">
+              <TextBlock Text="VCOM Hold / Slot Status" Style="{StaticResource FieldLabelStyle}" />
+              <TextBlock Text="{Binding LastQuickReadReport.SlotAndStorageSummary}" Foreground="#6EE7B7" FontWeight="SemiBold" TextWrapping="Wrap" />
+            </StackPanel>
+          </UniformGrid>
+
+          <DataGrid ItemsSource="{Binding QuickReadFields}" MaxHeight="240" Margin="0,0,0,10">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Attribute" Binding="{Binding Key}" Width="220" />
+              <DataGridTextColumn Header="Reported Value" Binding="{Binding Value}" Width="*" />
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <!-- Direct Next-Step Workflow Buttons -->
+          <UniformGrid Columns="3">
+            <Button Content="🗂 Open Partition Manager" Command="{Binding QuickNavigateCommand}" CommandParameter="13" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" />
+            <Button Content="📦 Unpack Firmware / Payload" Command="{Binding QuickNavigateCommand}" CommandParameter="11" Style="{StaticResource SecondaryButtonStyle}" Margin="3,0,3,0" />
+            <Button Content="🔥 Open Safe Flasher" Command="{Binding QuickNavigateCommand}" CommandParameter="14" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0" />
+          </UniformGrid>
+        </StackPanel>
+      </Border>
+
+      <!-- Active ADB / Fastboot Snapshot Card (When a persistent device is bound) -->
       <Border Style="{StaticResource FluentCardStyle}" Visibility="{Binding HasActiveDevice, Converter={StaticResource BoolToVis}}">
         <StackPanel DataContext="{Binding ActiveDevice}">
-          <DockPanel Margin="0,0,0,12">
-            <Border DockPanel.Dock="Right" Background="{Binding DashboardState, Converter={StaticResource StateBrush}}" CornerRadius="4" Padding="10,4">
-              <TextBlock Text="{Binding DashboardState}" Foreground="#FFFFFF" FontWeight="Bold" FontSize="12" />
+          <DockPanel Margin="0,0,0,8">
+            <Border DockPanel.Dock="Right" Background="{Binding DashboardState, Converter={StaticResource StateBrush}}" CornerRadius="4" Padding="10,3">
+              <TextBlock Text="{Binding DashboardState}" Foreground="#FFFFFF" FontWeight="Bold" FontSize="11.5" />
             </Border>
-            <TextBlock Text="{Binding ExactModel.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="18" FontWeight="Bold" />
+            <TextBlock Text="{Binding ExactModel.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" FontSize="16" FontWeight="Bold" />
           </DockPanel>
 
           <UniformGrid Columns="3">
-            <StackPanel Margin="0,0,12,12">
+            <StackPanel Margin="0,0,10,8">
               <TextBlock Text="Manufacturer" Style="{StaticResource FieldLabelStyle}" />
-              <WrapPanel>
-                <TextBlock Text="{Binding Manufacturer.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" Margin="0,0,6,0" />
-                <Border Background="{Binding Manufacturer.BadgeText, Converter={StaticResource ProvenanceBrush}}" CornerRadius="3" Padding="5,1">
-                  <TextBlock Text="{Binding Manufacturer.BadgeText}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" />
-                </Border>
-              </WrapPanel>
+              <TextBlock Text="{Binding Manufacturer.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" />
             </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
-              <TextBlock Text="Exact Model &amp; Confidence" Style="{StaticResource FieldLabelStyle}" />
-              <WrapPanel>
-                <TextBlock Text="{Binding ExactModel.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" Margin="0,0,6,0" TextWrapping="Wrap" />
-                <Border Background="{Binding ExactModel.BadgeText, Converter={StaticResource ProvenanceBrush}}" CornerRadius="3" Padding="5,1">
-                  <TextBlock Text="{Binding ExactModel.BadgeText}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" />
-                </Border>
-              </WrapPanel>
-            </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
-              <TextBlock Text="Aliases &amp; Codename" Style="{StaticResource FieldLabelStyle}" />
-              <TextBlock Foreground="{StaticResource PrimaryTextBrush}">
-                <Run Text="{Binding ModelAliases.DisplayText, Mode=OneWay}" />
-                <Run Text=" / " Foreground="{StaticResource MutedTextBrush}" />
-                <Run Text="{Binding Codename.DisplayText, Mode=OneWay}" />
-              </TextBlock>
-            </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
+            <StackPanel Margin="0,0,10,8">
               <TextBlock Text="Chipset Family" Style="{StaticResource FieldLabelStyle}" />
-              <WrapPanel>
-                <TextBlock Text="{Binding ChipsetFamily.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" Margin="0,0,6,0" TextWrapping="Wrap" />
-                <Border Background="{Binding ChipsetFamily.BadgeText, Converter={StaticResource ProvenanceBrush}}" CornerRadius="3" Padding="5,1">
-                  <TextBlock Text="{Binding ChipsetFamily.BadgeText}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" />
-                </Border>
-              </WrapPanel>
+              <TextBlock Text="{Binding ChipsetFamily.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
             </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
-              <TextBlock Text="Android Version" Style="{StaticResource FieldLabelStyle}" />
-              <TextBlock Text="{Binding AndroidVersion.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" />
-            </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
-              <TextBlock Text="USB VID:PID &amp; Active Mode" Style="{StaticResource FieldLabelStyle}" />
+            <StackPanel Margin="0,0,10,8">
+              <TextBlock Text="USB VID:PID &amp; Mode" Style="{StaticResource FieldLabelStyle}" />
               <TextBlock Foreground="{StaticResource AccentCyanBrush}" FontFamily="{StaticResource MonoFont}">
                 <Run Text="{Binding UsbIdsDisplay, Mode=OneWay}" />
                 <Run Text=" | " />
                 <Run Text="{Binding ActiveConnectionMode, Mode=OneWay}" />
               </TextBlock>
             </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
-              <TextBlock Text="Authorization Status" Style="{StaticResource FieldLabelStyle}" />
-              <TextBlock Text="{Binding AuthorizationStatus}" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
-            </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
-              <TextBlock Text="Bootloader State" Style="{StaticResource FieldLabelStyle}" />
-              <WrapPanel>
-                <TextBlock Text="{Binding BootloaderState.DisplayText}" Foreground="{StaticResource PrimaryTextBrush}" Margin="0,0,6,0" />
-                <Border Background="{Binding BootloaderState.BadgeText, Converter={StaticResource ProvenanceBrush}}" CornerRadius="3" Padding="5,1">
-                  <TextBlock Text="{Binding BootloaderState.BadgeText}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" />
-                </Border>
-              </WrapPanel>
-            </StackPanel>
-
-            <StackPanel Margin="0,0,12,12">
-              <TextBlock Text="Last Connection Event" Style="{StaticResource FieldLabelStyle}" />
-              <TextBlock Text="{Binding LastConnectionEvent}" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" />
-            </StackPanel>
           </UniformGrid>
-
-          <TextBlock Text="Build Fingerprint" Style="{StaticResource FieldLabelStyle}" />
-          <TextBlock Text="{Binding BuildFingerprint.DisplayText}" Foreground="{StaticResource SecondaryTextBrush}" FontFamily="{StaticResource MonoFont}" FontSize="11.5" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
 
-      <!-- Operations Permitted For Active Device & Protocol -->
-      <Border Style="{StaticResource FluentCardStyle}" Visibility="{Binding HasActiveDevice, Converter={StaticResource BoolToVis}}">
-        <StackPanel>
-          <TextBlock Text="Permitted Operations for Selected Device &amp; Protocol" Style="{StaticResource SectionHeadingStyle}" />
-          <DataGrid ItemsSource="{Binding AvailableOperations}" MaxHeight="220">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Category" Binding="{Binding Operation.Category}" Width="100" />
-              <DataGridTextColumn Header="Operation" Binding="{Binding Operation.DisplayName}" Width="260" />
-              <DataGridTextColumn Header="Modifies State" Binding="{Binding Operation.ModifiesDeviceState}" Width="105" />
-              <DataGridTextColumn Header="Destructive" Binding="{Binding Operation.IsDestructive}" Width="90" />
-              <DataGridTextColumn Header="Verification Method" Binding="{Binding Operation.VerificationMethod}" Width="*" />
-            </DataGrid.Columns>
-          </DataGrid>
-        </StackPanel>
-      </Border>
-
-      <!-- Protocol Subsystem Status Matrix -->
-      <Border Style="{StaticResource FluentCardStyle}">
-        <StackPanel>
-          <TextBlock Text="Protocol Provider Subsystem Matrix (Real Implementation Status)" Style="{StaticResource SectionHeadingStyle}" />
-          <DataGrid ItemsSource="{Binding ProviderSummaries}" MaxHeight="260">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Protocol Provider" Binding="{Binding ProviderName}" Width="210" />
-              <DataGridTextColumn Header="Implementation Status" Binding="{Binding ImplementationStatus}" Width="190" />
-              <DataGridTextColumn Header="Verification" Binding="{Binding VerificationLevel}" Width="170" />
-              <DataGridTextColumn Header="Dependencies &amp; Capability Scope" Binding="{Binding DependencySummary}" Width="*" />
-            </DataGrid.Columns>
-          </DataGrid>
-        </StackPanel>
-      </Border>
     </StackPanel>
   </DataTemplate>
 
@@ -152,17 +463,24 @@
     <StackPanel>
       <Border Style="{StaticResource FluentCardStyle}">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-            <Button Content="Bind Selected Target" Command="{Binding ConfirmExplicitSelectionCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0" />
-            <Button Content="Clear Selection" Command="{Binding ClearSelectionCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" />
-            <Button Content="Rescan USB &amp; Ports" Command="{Binding ScanAllTransportsCommand}" Style="{StaticResource SecondaryButtonStyle}" />
-          </StackPanel>
+          <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+            <Button Content="Bind Selected Target" Command="{Binding ConfirmExplicitSelectionCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,4" />
+            <Button Content="Clear Selection" Command="{Binding ClearSelectionCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,4" />
+            <Button Content="Rescan USB &amp; Ports" Command="{Binding ScanAllTransportsCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,4" />
+            <Button Content="🛠 Open Device Manager" Command="{Binding OpenDeviceManagerCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,4" />
+            <Button Content="🔍 Check Signed USB Drivers" Command="{Binding AuditInstalledDriversCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,4" />
+            <Button Content="↻ Restart ADB Server" Command="{Binding RestartAdbServerCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,0,4" />
+          </WrapPanel>
           <StackPanel>
-            <TextBlock Text="Explicit Multi-Device Selector &amp; USB/PnP Diagnostics" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
-            <TextBlock Text="When multiple phones are connected, TranssionLab never silently picks a target. Highlight a device below and click Bind Selected Target."
+            <TextBlock Text="Explicit Multi-Device Selector, Windows Driver Check &amp; USB/PnP Diagnostics" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,4" />
+            <TextBlock Text="When multiple phones are connected, TranssionLab never silently picks a target. Use 'Check Signed USB Drivers' or 'Open Device Manager' to verify MediaTek, Unisoc, and WinUSB drivers."
                        Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" />
           </StackPanel>
         </DockPanel>
+      </Border>
+
+      <Border Style="{StaticResource FluentCardStyle}" Visibility="{Binding HasDriverAuditReport, Converter={StaticResource BoolToVis}}">
+        <TextBox Text="{Binding DriverAuditReportText, Mode=OneWay}" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="12" TextWrapping="Wrap" />
       </Border>
 
       <Border Style="{StaticResource FluentCardStyle}">
@@ -278,17 +596,81 @@
       <!-- Operations gated on Authorized ADB / Recovery -->
       <Border Style="{StaticResource FluentCardStyle}">
         <StackPanel>
-          <TextBlock Text="Authorized ADB Operations (Enabled only when selected device is in Authorized ADB / Recovery mode)" Style="{StaticResource SectionHeadingStyle}" />
+          <TextBlock Text="1. ADB Telemetry, Screenshot, Logcat &amp; Mode Transitions" Style="{StaticResource SectionHeadingStyle}" />
           <WrapPanel Margin="0,0,0,10">
-            <Button Content="Capture Battery &amp; Storage Telemetry" Command="{Binding ReadBatteryAndStorageCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" />
+            <Button Content="🔋 Battery &amp; Storage" Command="{Binding ReadBatteryAndStorageCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8" />
+            <Button Content="📸 Capture Screenshot (.png)" Command="{Binding CaptureScreenshotCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
+            <Button Content="📜 Capture Logcat &amp; Crash Log" Command="{Binding CaptureLogcatCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
             <Button Content="Reboot System" Command="{Binding RebootSystemCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
             <Button Content="Reboot Bootloader (Fastboot)" Command="{Binding RebootBootloaderCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
             <Button Content="Reboot Fastbootd (Userspace)" Command="{Binding RebootFastbootdCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
             <Button Content="Reboot Recovery" Command="{Binding RebootRecoveryCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
+            <Button Content="↻ Restart ADB Daemon" Command="{Binding RestartAdbDaemonCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,0,8" />
           </WrapPanel>
 
-          <TextBlock Text="Verified Recovery OTA Sideload (Enabled only when selected device is in ADB Sideload mode)" Style="{StaticResource FieldLabelStyle}" />
-          <Grid Margin="0,4,0,12">
+          <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="1*" />
+              <ColumnDefinition Width="12" />
+              <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- APK Installer & Wireless ADB -->
+            <Border Grid.Column="0" Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
+              <StackPanel>
+                <TextBlock Text="2. APK Package Installer (.apk)" Style="{StaticResource FieldLabelStyle}" Foreground="{StaticResource AccentCyanBrush}" />
+                <Grid Margin="0,4,0,10">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox Grid.Column="0" Text="{Binding ApkInstallPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,0" />
+                  <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowseApkCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" />
+                  <Button Grid.Column="2" Content="Install APK" Command="{Binding InstallApkCommand}" Style="{StaticResource PrimaryButtonStyle}" />
+                </Grid>
+
+                <TextBlock Text="3. Wireless ADB Pair &amp; Connect (Android 11–16)" Style="{StaticResource FieldLabelStyle}" Foreground="{StaticResource AccentCyanBrush}" />
+                <Grid Margin="0,4,0,6">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.4*" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="0.8*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox Grid.Column="0" Text="{Binding WirelessHostPort, UpdateSourceTrigger=PropertyChanged}" ToolTip="IP:Port (e.g. 192.168.1.25:38911)" />
+                  <TextBox Grid.Column="2" Text="{Binding WirelessPairCode, UpdateSourceTrigger=PropertyChanged}" ToolTip="6-digit pairing code (for Pair)" />
+                </Grid>
+                <WrapPanel>
+                  <Button Content="Pair Wireless ADB" Command="{Binding PairWirelessAdbCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" />
+                  <Button Content="Connect Wireless ADB" Command="{Binding ConnectWirelessAdbCommand}" Style="{StaticResource SecondaryButtonStyle}" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- Installed Package / App Manager -->
+            <Border Grid.Column="2" Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
+              <StackPanel>
+                <DockPanel Margin="0,0,0,6">
+                  <CheckBox DockPanel.Dock="Right" IsChecked="{Binding ThirdPartyPackagesOnly}" Content="3rd-Party Only" VerticalAlignment="Center" />
+                  <TextBlock Text="4. Installed App / Package Manager" Style="{StaticResource FieldLabelStyle}" Foreground="{StaticResource AccentCyanBrush}" VerticalAlignment="Center" />
+                </DockPanel>
+                <Grid Margin="0,0,0,6">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox Grid.Column="0" Text="{Binding PackageFilter, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter package name..." Margin="0,0,6,0" />
+                  <Button Grid.Column="1" Content="Load Apps" Command="{Binding ListPackagesCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" />
+                  <Button Grid.Column="2" Content="Uninstall User App" Command="{Binding UninstallSelectedPackageCommand}" Style="{StaticResource DangerButtonStyle}" />
+                </Grid>
+                <ListBox ItemsSource="{Binding FilteredPackages}" SelectedItem="{Binding SelectedPackage}" Height="88" Background="#090D16" Foreground="{StaticResource PrimaryTextBrush}" FontFamily="{StaticResource MonoFont}" FontSize="11.5" />
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <TextBlock Text="5. Verified Recovery OTA Sideload (ADB Sideload Mode)" Style="{StaticResource FieldLabelStyle}" />
+          <Grid Margin="0,4,0,10">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
@@ -299,8 +681,8 @@
             <Button Grid.Column="2" Content="Stream Sideload Package" Command="{Binding RunSideloadCommand}" Style="{StaticResource PrimaryButtonStyle}" />
           </Grid>
 
-          <TextBlock Text="Command &amp; Telemetry Output" Style="{StaticResource FieldLabelStyle}" />
-          <TextBox Text="{Binding DiagnosticOutput, Mode=OneWay}" IsReadOnly="True" Height="250" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="{StaticResource MonoFont}" />
+          <TextBlock Text="Command, Logcat &amp; Telemetry Output" Style="{StaticResource FieldLabelStyle}" />
+          <TextBox Text="{Binding DiagnosticOutput, Mode=OneWay}" IsReadOnly="True" Height="175" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="{StaticResource MonoFont}" />
         </StackPanel>
       </Border>
     </StackPanel>
@@ -326,9 +708,51 @@
             <Button Content="Reboot System" Command="{Binding RebootSystemCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
             <Button Content="Reboot Bootloader" Command="{Binding RebootBootloaderCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
             <Button Content="Enter Userspace Fastbootd" Command="{Binding RebootFastbootdCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8" />
+            <Button Content="Reboot Recovery" Command="{Binding RebootRecoveryCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,0,8" />
           </WrapPanel>
 
-          <DataGrid ItemsSource="{Binding FastbootVariables}" Height="360">
+          <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="1.15*" />
+              <ColumnDefinition Width="12" />
+              <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Temporary RAM Boot (fastboot boot) -->
+            <Border Grid.Column="0" Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
+              <StackPanel>
+                <TextBlock Text="Temporary RAM Boot (`fastboot boot` — Requires Unlocked Bootloader, Writes 0 Flash Bytes)" Style="{StaticResource FieldLabelStyle}" Foreground="{StaticResource AccentCyanBrush}" />
+                <Grid Margin="0,6,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox Grid.Column="0" Text="{Binding TempBootImagePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,0" ToolTip="Select boot.img or recovery.img" />
+                  <Button Grid.Column="1" Content="Browse .img..." Command="{Binding BrowseTempBootImageCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,0" />
+                  <Button Grid.Column="2" Content="Boot Image in RAM" Command="{Binding BootTempImageCommand}" Style="{StaticResource PrimaryButtonStyle}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Official Unlocked Factory Reset (-w) -->
+            <Border Grid.Column="2" Background="#0F172A" BorderBrush="{StaticResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
+              <StackPanel>
+                <TextBlock Text="Official Unlocked Factory Reset (`fastboot -w` — Type WIPE USERDATA)" Style="{StaticResource FieldLabelStyle}" Foreground="{StaticResource WarningAmberBrush}" />
+                <Grid Margin="0,6,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox Grid.Column="0" Text="{Binding WipeConfirmationInput, UpdateSourceTrigger=PropertyChanged}" FontFamily="{StaticResource MonoFont}" ToolTip="Type exact phrase: WIPE USERDATA" />
+                  <Button Grid.Column="2" Content="Format Userdata" Command="{Binding WipeUserdataCommand}" Style="{StaticResource DangerButtonStyle}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <DataGrid ItemsSource="{Binding FastbootVariables}" Height="250">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Provenance" Binding="{Binding Provenance}" Width="110" />
               <DataGridTextColumn Header="Fastboot Variable" Binding="{Binding Key}" Width="260" />

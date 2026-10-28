@@ -2,6 +2,10 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:pages="clr-namespace:TranssionLab.ViewModels.Pages;assembly=TranssionLab.ViewModels">
 
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="pack://application:,,,/TranssionLab;component/Themes/FluentDarkTheme.xaml" />
+  </ResourceDictionary.MergedDictionaries>
+
   <!-- PAGE 15: OPERATION HISTORY -->
   <DataTemplate DataType="{x:Type pages:OperationHistoryViewModel}">
     <StackPanel>
@@ -63,9 +67,22 @@
     </StackPanel>
   </DataTemplate>
 
-  <!-- PAGE 17: SETTINGS (Section 10 Offline-First) -->
+  <!-- PAGE 18: SETTINGS (Section 10 Offline-First + First-Time Setup Provisioning) -->
   <DataTemplate DataType="{x:Type pages:SettingsViewModel}">
     <StackPanel>
+      <Border Style="{StaticResource FluentCardStyle}">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+          <TextBlock Text="First-Time Setup &amp; Environment Readiness" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,6" />
+          <TextBlock Text="Verify local workspace folders, seed reference TECNO / Infinix / itel device profiles, auto-detect installed Android tools, or optionally download official Google Android SDK Platform-Tools (adb &amp; fastboot, Apache-2.0) directly into your local user workspace without requiring Administrator privileges."
+                     Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10" />
+          <TextBox Text="{Binding SetupReadinessSummary, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="{StaticResource MonoFont}" FontSize="12" Margin="0,0,0,10" />
+          <WrapPanel>
+            <Button Content="Verify Workspace &amp; Detect Tools" Command="{Binding RunEnvironmentCheckCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" />
+            <Button Content="Auto-Install Official Android Platform-Tools (adb &amp; fastboot)" Command="{Binding AutoInstallPlatformToolsCommand}" Style="{StaticResource PrimaryButtonStyle}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
       <Border Style="{StaticResource FluentCardStyle}">
         <StackPanel MaxWidth="760" HorizontalAlignment="Left">
           <TextBlock Text="Offline-First Application &amp; Tool Configuration" Style="{StaticResource SectionHeadingStyle}" Margin="0,0,0,6" />

@@ -53,4 +53,17 @@ public sealed record AppSettingsModel
     public int UsbPollIntervalSeconds { get; set; } = 3;
     public bool RedactSensitiveDataInLogs { get; set; } = true;
     public bool RequireStrictProfileMatchBeforeFlash { get; set; } = true;
+    public bool FirstTimeSetupCompleted { get; set; }
+    public DateTimeOffset? FirstSetupTimestampUtc { get; set; }
 }
+
+public sealed record FirstTimeSetupResult(
+    bool Succeeded,
+    string WorkspaceDirectory,
+    int SeededProfileCount,
+    string ResolvedAdbPath,
+    bool AdbAvailable,
+    string ResolvedFastbootPath,
+    bool FastbootAvailable,
+    bool PlatformToolsDownloaded,
+    string SummaryMessage);
