@@ -1,4 +1,4 @@
-name: TranssionLab CI, Static Analysis & Single Windows Installer Release
+name: TranssionLab CI, Microsoft Defender Scan & Single Windows EXE Release
 
 on:
   push:
@@ -17,6 +17,7 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   SOLUTION_FILE: TranssionLab.sln
   APP_PROJECT: src/TranssionLab.App/TranssionLab.App.csproj
+  SETUP_PROJECT: installer/TranssionLab.Setup/TranssionLab.Setup.csproj
 
 jobs:
   build-test-analyze:
@@ -44,7 +45,7 @@ jobs:
         run: dotnet test ${{ env.SOLUTION_FILE }} --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
 
   package-windows:
-    name: Build & Smoke-Test Single Windows Setup Executable (win-x64)
+    name: Build, Defender-Scan & Smoke-Test Single Windows Setup EXE (win-x64)
     needs: build-test-analyze
     runs-on: windows-latest
     steps:
@@ -63,7 +64,7 @@ jobs:
           if ("${{ github.ref }}" -like "refs/tags/v*") {
             $v = "${{ github.ref_name }}".TrimStart('v')
           } else {
-            $v = "1.7.0"
+            $v = "1.8.0"
           }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
@@ -81,47 +82,90 @@ jobs:
             -p:DebugSymbols=false `
             --output $bundleDir
 
-          New-Item -ItemType Directory -Force -Path "$bundleDir/profiles", "$bundleDir/docs", "$bundleDir/tools" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$bundleDir/platform-tools", "$bundleDir/profiles", "$bundleDir/docs", "$bundleDir/tools" | Out-Null
           Copy-Item "profiles/*.json" "$bundleDir/profiles/" -ErrorAction SilentlyContinue
           Copy-Item "docs/*.md" "$bundleDir/docs/"
           Copy-Item "README.md" "$bundleDir/"
 
           $ptZip = Join-Path $env:RUNNER_TEMP "platform-tools-latest-windows.zip"
+          $ptExtract = Join-Path $env:RUNNER_TEMP "pt_extracted"
           Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $ptZip -UseBasicParsing
-          Expand-Archive -Path $ptZip -DestinationPath $bundleDir -Force
+          Expand-Archive -Path $ptZip -DestinationPath $ptExtract -Force
 
-      - name: Build Single NSIS Standalone First-Time Setup Executable
+          $wanted = @("adb.exe", "fastboot.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll", "libwinpthread-1.dll", "NOTICE.txt", "source.properties")
+          foreach ($f in $wanted) {
+            $src = Join-Path "$ptExtract\platform-tools" $f
+            if (Test-Path $src) {
+              Copy-Item $src "$bundleDir/platform-tools/$f" -Force
+            }
+          }
+
+          "Official Apache-2.0 Android SDK Platform-Tools (adb.exe & fastboot.exe) are pre-bundled in ../platform-tools/." |
+            Set-Content -Encoding UTF8 "$bundleDir/tools/README-TOOLS.txt"
+
+          $bundleZip = Join-Path $env:RUNNER_TEMP "TranssionLabBundle.zip"
+          if (Test-Path $bundleZip) { Remove-Item $bundleZip -Force }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $bundleDir).Path, $bundleZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+      - name: Compile Native 64-Bit C# Windows Setup Executable (Zero NSIS/Packer)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "releases" | Out-Null
           $ver = "${{ steps.ver.outputs.version }}"
+          $bundleZip = Join-Path $env:RUNNER_TEMP "TranssionLabBundle.zip"
+          $setupBuildOut = Join-Path $env:RUNNER_TEMP "setup_out"
+
+          dotnet build ${{ env.SETUP_PROJECT }} `
+            --configuration Release `
+            -warnaserror `
+            -p:Version=$ver `
+            -p:BundleZipPath="$bundleZip" `
+            --output "$setupBuildOut"
+
           $setupName = "TranssionLab-Setup-v$ver-win-x64.exe"
-          $setupPath = (Join-Path (Resolve-Path "releases").Path $setupName)
-          $bundleAbs = (Resolve-Path "dist/win-x64").Path
-          $iconAbs = (Resolve-Path "src/TranssionLab.App/Assets/TranssionLab.ico").Path
+          $setupPath = Join-Path (Resolve-Path "releases").Path $setupName
+          Copy-Item (Join-Path $setupBuildOut "TranssionLab-Setup.exe") $setupPath -Force
+          $hash = (Get-FileHash -Path $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Built clean 64-bit Setup EXE: $setupPath (SHA-256: $hash)"
 
-          & "C:\Program Files (x86)\NSIS\makensis.exe" `
-            "/V2" `
-            "/DAPP_VERSION=$ver" `
-            "/DAPP_ARCH=win-x64" `
-            "/DBUNDLE_DIR=$bundleAbs" `
-            "/DOUT_EXE=$setupPath" `
-            "/DICON_FILE=$iconAbs" `
-            "installer/TranssionLabSetup.nsi"
+      - name: Scan Setup EXE with Microsoft Defender Antivirus (MpCmdRun.exe)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $setupPath = (Resolve-Path "releases/TranssionLab-Setup-v$ver-win-x64.exe").Path
+          $defender = "C:\Program Files\Windows Defender\MpCmdRun.exe"
+          if (Test-Path $defender) {
+            & $defender -Scan -ScanType 3 -File $setupPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Microsoft Defender flagged $setupPath (exit code $LASTEXITCODE)"
+            }
+            Write-Host "Microsoft Defender scan PASSED: 0 threats found in $setupPath"
+          }
 
-          Write-Host "Built standalone installer: $setupPath"
-
-      - name: Smoke-test Setup Installer & 19-Page WPF Rendering on Windows
+      - name: Smoke-test Silent Install, Defender Folder Scan & 19-Page WPF Self-Test
         shell: pwsh
         run: |
           $ver = "${{ steps.ver.outputs.version }}"
           $setupPath = (Resolve-Path "releases/TranssionLab-Setup-v$ver-win-x64.exe").Path
           $installTarget = Join-Path $env:RUNNER_TEMP "TranssionLabInstalledTest"
-          Start-Process -FilePath $setupPath -ArgumentList "/S", "/D=$installTarget" -Wait -NoNewWindow
+          $proc = Start-Process -FilePath $setupPath -ArgumentList "/S", "/D=$installTarget" -Wait -PassThru -NoNewWindow
+          if ($proc.ExitCode -ne 0) {
+            throw "Silent setup exited with code $($proc.ExitCode)"
+          }
 
           $installedExe = Join-Path $installTarget "TranssionLab.exe"
           if (-not (Test-Path $installedExe)) {
             throw "Installer failed to unpack TranssionLab.exe to $installedExe"
+          }
+
+          $defender = "C:\Program Files\Windows Defender\MpCmdRun.exe"
+          if (Test-Path $defender) {
+            & $defender -Scan -ScanType 3 -File $installTarget
+            if ($LASTEXITCODE -ne 0) {
+              throw "Microsoft Defender flagged installed folder $installTarget (exit code $LASTEXITCODE)"
+            }
+            Write-Host "Microsoft Defender scan PASSED on installed folder: 0 threats found"
           }
 
           $out = & $installedExe --self-test

@@ -4,10 +4,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-VERSION="${1:-1.7.0}"
+VERSION="${1:-1.8.0}"
 RID="win-x64"
 SETUP_NAME="TranssionLab-Setup-v${VERSION}-${RID}.exe"
 BUNDLE_DIR="/tmp/transsionlab_bundle_${RID}"
+BUNDLE_ZIP="/tmp/transsionlab_bundle_${RID}.zip"
+SETUP_OUT_DIR="/tmp/transsionlab_setup_out"
 PT_ZIP="/tmp/pt_win.zip"
 
 export DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1
@@ -25,7 +27,7 @@ echo "==> [4/7] Running automated test suite..."
 dotnet test tests/TranssionLab.Tests/TranssionLab.Tests.csproj --configuration Release --no-build -nodeReuse:false --filter "Category=SimulatedUnit"
 
 echo "==> [5/7] Publishing multi-file self-contained Windows x64 runtime..."
-rm -rf "$BUNDLE_DIR"
+rm -rf "$BUNDLE_DIR" "$BUNDLE_ZIP" "$SETUP_OUT_DIR"
 dotnet publish src/TranssionLab.App/TranssionLab.App.csproj \
   --configuration Release \
   --runtime "$RID" \
@@ -65,22 +67,36 @@ Official Apache-2.0 Android SDK Platform-Tools (adb.exe & fastboot.exe)
 are pre-bundled in ../platform-tools/ (see ../platform-tools/NOTICE.txt).
 EOF
 
-echo "==> [7/7] Compiling native Win32 First-Time Setup & Installer executable (${SETUP_NAME})..."
+python3 - "$BUNDLE_DIR" "$BUNDLE_ZIP" << 'PYEOF'
+import os, sys, zipfile
+src_dir, zip_out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(zip_out, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+    for root, dirs, files in os.walk(src_dir):
+        dirs.sort()
+        files.sort()
+        for f in files:
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, src_dir).replace("\\", "/")
+            zf.write(full, rel)
+PYEOF
+
+echo "==> [7/7] Compiling native 64-bit C# .NET Framework 4.8 First-Time Setup Executable (${SETUP_NAME})..."
+rm -f "$REPO_ROOT/releases/"*
+dotnet build "$REPO_ROOT/installer/TranssionLab.Setup/TranssionLab.Setup.csproj" \
+  --configuration Release \
+  -nodeReuse:false \
+  -p:UseSharedCompilation=false \
+  -m:1 \
+  -warnaserror \
+  -p:Version="$VERSION" \
+  -p:BundleZipPath="$BUNDLE_ZIP" \
+  --output "$SETUP_OUT_DIR"
+
 SETUP_PATH="$REPO_ROOT/releases/${SETUP_NAME}"
-rm -f "$REPO_ROOT/releases/"*.exe "$REPO_ROOT/releases/"*.sha256 "$REPO_ROOT/releases/"*.zip
+cp "$SETUP_OUT_DIR/TranssionLab-Setup.exe" "$SETUP_PATH"
+rm -rf "$BUNDLE_DIR" "$BUNDLE_ZIP" "$SETUP_OUT_DIR"
 
-makensis \
-  -V2 \
-  -DAPP_VERSION="${VERSION}" \
-  -DAPP_ARCH="${RID}" \
-  -DBUNDLE_DIR="${BUNDLE_DIR}" \
-  -DOUT_EXE="${SETUP_PATH}" \
-  -DICON_FILE="${REPO_ROOT}/src/TranssionLab.App/Assets/TranssionLab.ico" \
-  "$REPO_ROOT/installer/TranssionLabSetup.nsi"
-
-(cd "$REPO_ROOT/releases" && sha256sum "${SETUP_NAME}" > "${SETUP_NAME}.sha256")
-rm -rf "$BUNDLE_DIR"
-
-echo "==> Standalone Windows First-Time Setup executable built successfully:"
-ls -lh "$SETUP_PATH" "${SETUP_PATH}.sha256"
-cat "${SETUP_PATH}.sha256"
+echo "==> Standalone 64-bit Windows Setup executable built successfully (Single EXE only):"
+ls -lh "$SETUP_PATH"
+file "$SETUP_PATH"
+sha256sum "$SETUP_PATH"

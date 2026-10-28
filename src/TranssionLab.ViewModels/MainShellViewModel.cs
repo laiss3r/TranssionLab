@@ -339,7 +339,7 @@ public sealed class MainShellViewModel : ObservableObject, IDisposable
         _quickRead = quickRead;
         _homeHub = p1;
 
-        AppendConsoleLine("TranssionLab Pro v1.7.0 Ready (Offline-First • Complete Bench Toolset • Bundled ADB & Fastboot)");
+        AppendConsoleLine("TranssionLab Pro v1.8.0 Ready (Offline-First • Complete Bench Toolset • Bundled ADB & Fastboot)");
         AppendConsoleLine("📋 Connection Steps: 1. Power OFF phone  2. Click Read Info / MTK / META / SPD  3. Plug USB when log says 'Waiting for USB device...'");
         AppendConsoleLine("⚡ Auto-Catch VCOM is ON — Waiting for USB device...");
 

@@ -77,7 +77,7 @@ public static class Program
             var path = Path.Combine(dir, $"startup-crash-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.log");
             File.WriteAllText(
                 path,
-                $"TranssionLab v1.7.0 Bootstrap Diagnostic Report\nTimestampUtc: {DateTimeOffset.UtcNow:O}\nBaseDirectory: {AppContext.BaseDirectory}\nOS: {Environment.OSVersion}\nException:\n{ex}\n");
+                $"TranssionLab v1.8.0 Bootstrap Diagnostic Report\nTimestampUtc: {DateTimeOffset.UtcNow:O}\nBaseDirectory: {AppContext.BaseDirectory}\nOS: {Environment.OSVersion}\nException:\n{ex}\n");
             return path;
         }
         catch

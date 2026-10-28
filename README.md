@@ -3,7 +3,12 @@
 Professional offline-first Windows 10 / Windows 11 desktop application (`C#` / `.NET 8` / `WPF`) for diagnosing, identifying, inspecting firmware, and safely servicing supported **TECNO**, **Infinix**, and **itel** Android devices through **Android 16**.
 
 > ### ⬇️ Download Single Windows Installer (`.exe`)
-> **[Download `TranssionLab-Setup-v1.7.0-win-x64.exe`](https://github.com/laiss3r/TranssionLab/releases/download/v1.7.0/TranssionLab-Setup-v1.7.0-win-x64.exe)** *(51.2 MB — Self-contained `.NET 8` + WPF + bundled `adb.exe` & `fastboot.exe` + 125 Hz VCOM Catch-and-Hold Engine)*
+> **[Download `TranssionLab-Setup-v1.8.0-win-x64.exe`](https://github.com/laiss3r/TranssionLab/releases/download/v1.8.0/TranssionLab-Setup-v1.8.0-win-x64.exe)** *(Native 64-bit Microsoft C# Setup Wizard — scanned clean by Microsoft Defender • Self-contained `.NET 8` + WPF + bundled `adb.exe` & `fastboot.exe` + 125 Hz VCOM Catch-and-Hold Engine)*
+>
+> **First-Time Windows SmartScreen Tip (Unsigned Open-Source Build):**
+> - In **Microsoft Edge Downloads**: click **`⋯`** next to the file → **Keep** → **Show more** → **Keep anyway**.
+> - On the blue **"Windows protected your PC"** prompt: click **`More info`** → **`Run anyway`** *(or right-click the `.exe` → **Properties** → check **Unblock** → **OK**)*.
+> - On Windows 11 if it says *"isn't a Microsoft-verified app"*: open **Settings → Apps → Advanced app settings → Choose where to get apps → Anywhere**.
 
 ---
 
@@ -36,7 +41,7 @@ Professional offline-first Windows 10 / Windows 11 desktop application (`C#` / `
 
 ## Quick Install on Windows 10 & Windows 11 (Single `.exe` Setup)
 
-1. Download **`TranssionLab-Setup-v1.7.0-win-x64.exe`** and double-click it (no `.zip` extraction, external `.NET` runtime, or Administrator privileges required).
+1. Download **`TranssionLab-Setup-v1.8.0-win-x64.exe`** and double-click it (no `.zip` extraction, external `.NET` runtime, or Administrator privileges required).
 2. Complete the **First-Time Setup Wizard**:
    - Unpacks the full self-contained `.NET 8` + native WPF runtime directly into `%LOCALAPPDATA%\Programs\TranssionLab\` (avoiding `%TEMP%\.net` single-file native DLL extraction issues).
    - Pre-bundles official Apache-2.0 Google Android SDK Platform-Tools (`adb.exe` & `fastboot.exe`) in `platform-tools/` so ADB, Recovery Sideload, Fastboot, and Fastbootd work 100% offline immediately.
@@ -52,7 +57,7 @@ Professional offline-first Windows 10 / Windows 11 desktop application (`C#` / `
 dotnet restore TranssionLab.sln
 dotnet build TranssionLab.sln --configuration Release -warnaserror
 dotnet test TranssionLab.sln --configuration Release
-bash scripts/package-release.sh 1.7.0
+bash scripts/package-release.sh 1.8.0
 ```
 
 See `docs/` for:
